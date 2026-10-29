@@ -13,6 +13,7 @@
 
 #include "textToSpeechProvider_vicos.h"
 #include "textToSpeechProvider_acapela.h"
+#include "speechProsody.h"
 
 #include "cozmoAnim/animContext.h"
 
@@ -23,6 +24,8 @@
 #include "util/console/consoleMacro.h"
 #include "util/environment/locale.h"
 #include "util/logging/logging.h"
+
+#include <algorithm>
 
 /* Interpolate Acapela code fragments */
 #define USE_LOADINIFILE
@@ -317,6 +320,18 @@ Result TextToSpeechProviderImpl::GetFirstAudioData(const std::string & text,
   SETPARAM(BABIL_PARM_SEL_VOICESHAPE, shaping);
   SETPARAM(BABIL_PARM_PITCH, pitch);
 
+  // These are NLP pitch limits, separate from base pitch and speaking speed.
+  // Apply after each reset, relative to this request's adjusted pitch so SDK
+  // pitchScalar requests retain their intended register. SETPARAM only warns
+  // if the installed voice does not support these optional controls.
+  if (_tts_config->GetPitchRangeMin_percent() != 0 &&
+      _tts_config->GetPitchRangeMax_percent() != 0) {
+    const int minPitch = std::max(1, pitch * _tts_config->GetPitchRangeMin_percent() / 100);
+    const int maxPitch = std::max(pitch, pitch * _tts_config->GetPitchRangeMax_percent() / 100);
+    SETPARAM(BABIL_PARM_MINPITCH, minPitch);
+    SETPARAM(BABIL_PARM_MAXPITCH, maxPitch);
+  }
+
   // If you set any of these params, the rest also need to be set
   if (enablePauseParams) {
     SETPARAM(BABIL_PARM_LEADINGSILENCE, leadingSilence_ms);
@@ -330,8 +345,8 @@ Result TextToSpeechProviderImpl::GetFirstAudioData(const std::string & text,
 
   #undef SETPARAM
 
-  _str = text;
-  _strlen = text.size();
+  _str = _tts_config->GetNeutralSentenceEndings() ? WithNeutralSentenceEnding(text) : text;
+  _strlen = _str.size();
   _strpos = 0;
   _draining = false;
 

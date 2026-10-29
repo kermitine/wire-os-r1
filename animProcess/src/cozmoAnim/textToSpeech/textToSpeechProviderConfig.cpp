@@ -101,7 +101,22 @@ TextToSpeechProviderConfig::TextToSpeechProviderConfig(const std::string & langu
     JsonTools::GetValueOptional(language_config, TTS_SPEED_KEY, _tts_speed);
     JsonTools::GetValueOptional(language_config, TTS_SHAPING_KEY, _tts_shaping);
     JsonTools::GetValueOptional(language_config, TTS_PITCH_KEY, _tts_pitch);
+    JsonTools::GetValueOptional(language_config, "pitchRangeMin_percent", _tts_pitchRangeMin_percent);
+    JsonTools::GetValueOptional(language_config, "pitchRangeMax_percent", _tts_pitchRangeMax_percent);
+    JsonTools::GetValueOptional(language_config, "neutralSentenceEndings", _tts_neutralSentenceEndings);
     JsonTools::GetValueOptional(language_config, TTS_PAUSEPUNCTUATION_KEY, _tts_pausepunctuation);
+  }
+
+  // Acapela's limits must straddle the current pitch. Invalid or absent ranges
+  // leave the installed voice's prosody unchanged.
+  if ((_tts_pitchRangeMin_percent != 0 || _tts_pitchRangeMax_percent != 0) &&
+      (_tts_pitchRangeMin_percent < 20 || _tts_pitchRangeMin_percent > 100 ||
+       _tts_pitchRangeMax_percent < 100 || _tts_pitchRangeMax_percent > 250)) {
+    LOG_WARNING("TextToSpeechProviderConfig.InvalidPitchRange",
+                "Ignoring pitch range %d..%d percent",
+                _tts_pitchRangeMin_percent, _tts_pitchRangeMax_percent);
+    _tts_pitchRangeMin_percent = 0;
+    _tts_pitchRangeMax_percent = 0;
   }
 
   // Allow config traits to override language configuration

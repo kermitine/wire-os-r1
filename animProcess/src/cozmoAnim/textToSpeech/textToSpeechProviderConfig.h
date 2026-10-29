@@ -41,6 +41,10 @@ public:
   int GetSpeed() const;
   int GetShaping() const;
   int GetPitch() const;
+  // Optional robot prosody controls. Zero range percentages keep the voice defaults.
+  int GetPitchRangeMin_percent() const { return _tts_pitchRangeMin_percent; }
+  int GetPitchRangeMax_percent() const { return _tts_pitchRangeMax_percent; }
+  bool GetNeutralSentenceEndings() const { return _tts_neutralSentenceEndings; }
   int GetLeadingSilence_ms() const;
   int GetTrailingSilence_ms() const;
   int GetPausePunctuation_ms() const;
@@ -67,6 +71,9 @@ private:
   int _tts_speed;
   int _tts_shaping;
   int _tts_pitch;
+  int _tts_pitchRangeMin_percent = 0;
+  int _tts_pitchRangeMax_percent = 0;
+  bool _tts_neutralSentenceEndings = false;
   int _tts_pausepunctuation;
 
   // Configurable traits

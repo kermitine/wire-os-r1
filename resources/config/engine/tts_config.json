@@ -70,7 +70,10 @@
         { "textLengthMin": 10, "textLengthMax": 9999, "rangeMin": 83, "rangeMax": 83}
       ],
       "pitch": 85,
-      "shaping": 120
+      "shaping": 120,
+      "pitchRangeMin_percent": 85,
+      "pitchRangeMax_percent": 115,
+      "neutralSentenceEndings": true
     },
     "fr":
     {
