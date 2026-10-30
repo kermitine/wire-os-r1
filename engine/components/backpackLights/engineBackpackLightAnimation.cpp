@@ -17,6 +17,20 @@ namespace Anki {
 namespace Vector {
 namespace BackpackLightAnimation {
 
+const BackpackAnimation& GetGoHomeAnimation()
+{
+  static const BackpackAnimation animation = {
+    .onColors               = {{0x0040FF00, 0x0040FF00, 0x0040FF00}},
+    .offColors              = {{0x00000800, 0x00000800, 0x00000800}},
+    .onPeriod_ms            = {{60, 60, 60}},
+    .offPeriod_ms           = {{390, 390, 390}},
+    .transitionOnPeriod_ms  = {{60, 60, 60}},
+    .transitionOffPeriod_ms = {{210, 210, 210}},
+    .offset                 = {{0, 240, 480}}
+  };
+  return animation;
+}
+
 
 bool DefineFromJSON(const Json::Value& jsonDef, BackpackAnimation& outAnim)
 {  

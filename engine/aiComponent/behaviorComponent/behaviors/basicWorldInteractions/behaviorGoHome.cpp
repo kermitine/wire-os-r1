@@ -25,6 +25,7 @@
 #include "engine/blockWorld/blockWorld.h"
 #include "engine/blockWorld/blockWorldFilter.h"
 #include "engine/charger.h"
+#include "engine/components/backpackLights/engineBackpackLightComponent.h"
 #include "engine/components/carryingComponent.h"
 #include "engine/components/robotStatsTracker.h"
 #include "engine/components/visionComponent.h"
@@ -232,6 +233,9 @@ void BehaviorGoHome::OnBehaviorActivated()
   }
   
   PushDrivingAnims();
+
+  GetBEI().GetBackpackLightComponent().StartLoopingBackpackAnimation(
+    BackpackLightAnimation::GetGoHomeAnimation(), _dVars.backpackLightsHandle);
   
   _dVars.chargerID = object->GetID();
   
@@ -249,6 +253,10 @@ void BehaviorGoHome::OnBehaviorActivated()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void BehaviorGoHome::OnBehaviorDeactivated()
 {
+  if (_dVars.backpackLightsHandle.IsValid()) {
+    GetBEI().GetBackpackLightComponent().StopLoopingBackpackAnimation(_dVars.backpackLightsHandle);
+  }
+
   PopDrivingAnims();
   
   // If we had a clear success or failure, log it here

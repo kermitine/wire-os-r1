@@ -14,6 +14,7 @@
 #define __Engine_Behaviors_BehaviorGoHome_H__
 
 #include "engine/aiComponent/behaviorComponent/behaviors/iCozmoBehavior.h"
+#include "engine/components/backpackLights/engineBackpackLightComponentTypes.h"
 #include "coretech/common/engine/robotTimeStamp.h"
 
 namespace Anki {
@@ -81,6 +82,7 @@ private:
   struct DynamicVariables {
     DynamicVariables() {};
     ObjectID chargerID;
+    BackpackLightDataLocator backpackLightsHandle;
     bool     drivingAnimsPushed = false;
     int      driveToRetryCount = 0;
     int      turnToDockRetryCount = 0;

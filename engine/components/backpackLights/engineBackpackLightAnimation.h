@@ -52,6 +52,9 @@ struct BackpackAnimation {
 
 bool DefineFromJSON(const Json::Value& jsonDef, BackpackAnimation& outAnim);
 
+// A blue pulse travels from front to back while searching for or approaching the charger.
+const BackpackAnimation& GetGoHomeAnimation();
+
 } // namespace BackpackLightAnimation
 } // namespace Vector
 } // namespace Anki

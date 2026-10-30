@@ -24,6 +24,7 @@
 #include "engine/blockWorld/blockWorld.h"
 #include "engine/blockWorld/blockWorldFilter.h"
 #include "engine/charger.h"
+#include "engine/components/backpackLights/engineBackpackLightComponent.h"
 #include "engine/components/carryingComponent.h"
 #include "engine/moodSystem/moodManager.h"
 #include "engine/navMap/mapComponent.h"
@@ -237,6 +238,9 @@ void BehaviorFindHome::OnBehaviorActivated()
     _dVars = DynamicVariables();
     _dVars.persistent = std::move(persistent);
   }
+
+  GetBEI().GetBackpackLightComponent().StartLoopingBackpackAnimation(
+    BackpackLightAnimation::GetGoHomeAnimation(), _dVars.backpackLightsHandle);
     
   // If we're carrying a block, we must first put it down
   const auto& robotInfo = GetBEI().GetRobotInfo();
@@ -253,6 +257,10 @@ void BehaviorFindHome::OnBehaviorActivated()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void BehaviorFindHome::OnBehaviorDeactivated()
 {
+  if (_dVars.backpackLightsHandle.IsValid()) {
+    GetBEI().GetBackpackLightComponent().StopLoopingBackpackAnimation(_dVars.backpackLightsHandle);
+  }
+
   const auto& robotPose = GetBEI().GetRobotInfo().GetPose();
   const ObservableObject* charger = GetBEI().GetBlockWorld().FindLocatedObjectClosestTo(robotPose, *_iConfig.homeFilter);
 

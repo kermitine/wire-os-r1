@@ -14,6 +14,7 @@
 #define __Engine_Behaviors_BehaviorFindHome_H__
 
 #include "engine/aiComponent/behaviorComponent/behaviors/iCozmoBehavior.h"
+#include "engine/components/backpackLights/engineBackpackLightComponentTypes.h"
 
 #include "coretech/common/engine/math/polygon_fwd.h"
 #include "coretech/common/engine/math/pose.h"
@@ -81,6 +82,8 @@ private:
 
   struct DynamicVariables {
     DynamicVariables() {}
+
+    BackpackLightDataLocator backpackLightsHandle;
     
     // Number of completed 'searches'. One 'search' means
     // spinning around in place and looking for the charger
