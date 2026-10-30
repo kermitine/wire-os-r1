@@ -22,11 +22,11 @@ const BackpackAnimation& GetGoHomeAnimation()
   static const BackpackAnimation animation = {
     .onColors               = {{0x0040FF00, 0x0040FF00, 0x0040FF00}},
     .offColors              = {{0x00000800, 0x00000800, 0x00000800}},
-    .onPeriod_ms            = {{60, 60, 60}},
-    .offPeriod_ms           = {{390, 390, 390}},
-    .transitionOnPeriod_ms  = {{60, 60, 60}},
-    .transitionOffPeriod_ms = {{210, 210, 210}},
-    .offset                 = {{0, 240, 480}}
+    .onPeriod_ms            = {{30, 30, 30}},
+    .offPeriod_ms           = {{180, 180, 180}},
+    .transitionOnPeriod_ms  = {{30, 30, 30}},
+    .transitionOffPeriod_ms = {{120, 120, 120}},
+    .offset                 = {{0, 120, 240}}
   };
   return animation;
 }
