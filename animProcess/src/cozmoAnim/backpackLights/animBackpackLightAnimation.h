@@ -29,9 +29,15 @@ namespace Anim {
 
 namespace BackpackLightAnimation {
 
-  // BackpackAnimation is just a container for the SetBackpackLights message
+  // Native light parameters with optional timing for groups of synchronized pulses.
   struct BackpackAnimation {
     RobotInterface::SetBackpackLights lights;
+
+    // Leave both fields at zero for continuous looping.
+    u32 pulseCount = 0;
+    u32 pausePeriod_ms = 0;
+
+    bool IsInPause(TimeStamp_t elapsed_ms) const;
   };
   
   bool DefineFromJSON(const Json::Value& jsonDef, BackpackAnimation& outAnim);

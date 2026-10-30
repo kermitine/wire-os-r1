@@ -46,6 +46,8 @@ enum class BackpackLightSourcePrivate : BackpackLightSourceType
 struct BackpackLightData
 {
   BackpackLightAnimation::BackpackAnimation _lightConfiguration;
+  TimeStamp_t _startTime_ms = 0;
+  bool _isInPause = false;
 };
   
 BackpackLightComponent::BackpackLightComponent(const AnimContext* context)
@@ -196,6 +198,7 @@ void BackpackLightComponent::Update()
   
   auto newConfig = bestNewConfig.lock();
   auto curConfig = _curBackpackLightConfig.lock();
+  const TimeStamp_t curTime_ms = BaseStationTimer::getInstance()->GetCurrentTimeStamp();
 
   // Prevent spamming of off lights while both configs are null
   static bool sBothConfigsWereNull = false;
@@ -207,6 +210,8 @@ void BackpackLightComponent::Update()
     // If the best config is still a thing, use it. Otherwise use the off config
     if (newConfig != nullptr)
     {
+      newConfig->_startTime_ms = curTime_ms;
+      newConfig->_isInPause = false;
       SendBackpackLights(newConfig->_lightConfiguration);
     }
     else
@@ -215,6 +220,18 @@ void BackpackLightComponent::Update()
     }
     
     _curBackpackLightConfig = bestNewConfig;
+  }
+  else if (newConfig != nullptr)
+  {
+    const bool isInPause = newConfig->_lightConfiguration.IsInPause(curTime_ms - newConfig->_startTime_ms);
+    if (isInPause != newConfig->_isInPause) {
+      newConfig->_isInPause = isInPause;
+      if (isInPause) {
+        SendBackpackLights(BackpackAnimationTrigger::Off);
+      } else {
+        SendBackpackLights(newConfig->_lightConfiguration);
+      }
+    }
   }
   // Else if both new and cur configs are null then turn lights off
   else if(newConfig == nullptr && curConfig == nullptr &&
