@@ -19,8 +19,9 @@ character needs a listening check on Vector.
 | Pitch | 100 | 85 | 80 |
 | Voice shaping | 130 | 120 | 110 |
 | `pitchRangeMin_percent` | unset | 85 | 95 |
-| `pitchRangeMax_percent` | unset | 115 | 105 |
+| `pitchRangeMax_percent` | unset | 115 | 100 |
 | `neutralSentenceEndings` | false | true | true |
+| `reduceWordEmphasis` | false | false | true |
 | `tacticalDroidEffect` | false | false | true |
 
 Speaking speed is preserved. Pitch and shaping are synthesizer parameters,
@@ -36,7 +37,8 @@ example, longer replies at duration scalar 0.95 use 83 / 0.95, about 87.4.
 The pitch limits are passed to Acapela's `BABIL_PARM_MINPITCH` and
 `BABIL_PARM_MAXPITCH` after each synthesis reset. They follow the request's
 adjusted pitch, including `pitchScalar`. At pitch 80 the requested range is
-76 to 84. These controls are experimental: their audible effect on the bundled
+76 to 80. The upper limit no longer requests any rise above the base pitch.
+These controls are experimental: their audible effect on the bundled
 voice has not been verified. A rejected setting logs a warning and speech
 continues. Acceptance alone does not prove the voice uses the limits. Missing
 or invalid ranges leave the voice's default contour in place.
@@ -47,6 +49,28 @@ both become `Your timer is ready.` for synthesis. Questions, completed
 sentences, ellipses, and explicit speech markup are preserved. This encourages
 completed statement endings without changing the words or rewriting the
 entire voice contour. Speed traits use the original text length.
+
+`reduceWordEmphasis: true` also requests less stress on every word, targeting
+the enthusiastic word endings that remain after lowering the voice and
+normalizing final punctuation. Acapela exposes a decrease-emphasis control
+in its [voice editor](https://www.acapela-cloud.com/editor/). The native text
+preparation inserts `\emph=0\` before each whitespace-delimited token containing
+letters or digits, so words inside the sentence receive the instruction too.
+For example, `A quarter past three!` is prepared as:
+
+```text
+\emph=0\A \emph=0\quarter \emph=0\past \emph=0\three.
+```
+
+The tags are inserted after sentence-ending normalization. Existing whitespace,
+punctuation, contractions, numeric tokens, and UTF-8 bytes stay intact. Caller
+markup bypasses both automatic text changes; questions keep their question
+marks. Speed traits still use the original text length, before the tags are
+added. Missing or false `reduceWordEmphasis` keeps the previous text behavior.
+This is a request to the speech engine, rather than a measured correction of
+the waveform's pitch: its audible effect depends on the bundled voice, and
+does not guarantee a downward pitch sweep on every syllable. Verify the
+response on Vector before judging whether it removes the reported inflection.
 
 ## Metallic audio effect
 
@@ -103,7 +127,9 @@ cl /nologo /std:c++14 /EHsc /W4 /IanimProcess/src `
 
 Checks cover exact bypass, silence, headroom at several sample rates,
 sample-identical output across different chunk sizes, utterance reset and sample-rate changes,
-speech-band preservation, and the modulation sidebands. These checks establish
+speech-band preservation, the modulation sidebands, and word-level text
+preparation (including "quarter", questions, numbers, and caller markup).
+These checks establish
 signal behavior; they do not establish an audible character match.
 
 Listen on Vector for the lower tone, metallic texture, clear consonants,
@@ -111,6 +137,9 @@ consistent loudness, and absence of clicks or exaggerated warbling. The small
 speaker and existing Wwise effects influence the final result. Useful phrases:
 
 - "The probability of success is high."
+- "Quarter."
+- "A quarter past three."
+- "The quarter is on the table."
 - "Your timer is ready."
 - "The temperature is seventy-two degrees."
 - "You have a reminder at three thirty."
@@ -119,6 +148,9 @@ speaker and existing Wwise effects influence the final result. Useful phrases:
 To retain the synthesizer tuning but remove the metallic coloration, set
 `tacticalDroidEffect` to false and redeploy resources. To restore the previous
 lower-pitched robot voice, also restore pitch 85, shaping 120, and pitch range
-85 to 115. To restore the original voice, use pitch 100 and shaping 130, set
-both range values to 0, and set `neutralSentenceEndings` to false. Restart the
-animation process after changing the resources.
+85 to 115 and set `reduceWordEmphasis` to false. To keep the first metallic
+preset's delivery, retain pitch 80 and shaping 110, restore the range to
+95 to 105, and set `reduceWordEmphasis` to false. To restore the original voice,
+use pitch 100 and shaping 130, set both range values to 0, and set
+`neutralSentenceEndings` and `reduceWordEmphasis` to false. Restart the animation
+process after changing the resources.

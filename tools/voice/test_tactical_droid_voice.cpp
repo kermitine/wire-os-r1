@@ -1,11 +1,14 @@
 // Standalone regression checks; no robot SDK or audio device is required.
 // See docs/development/calm-voice.md for build commands.
 #include "cozmoAnim/textToSpeech/tacticalDroidVoiceEffect.h"
+#include "cozmoAnim/textToSpeech/speechProsody.h"
 
 #include <iostream>
 #include <stdexcept>
 
 using Anki::Vector::TextToSpeech::TacticalDroidVoiceEffect;
+using Anki::Vector::TextToSpeech::WithNeutralSentenceEnding;
+using Anki::Vector::TextToSpeech::WithReducedWordEmphasis;
 using Samples = std::vector<short>;
 
 namespace {
@@ -146,6 +149,32 @@ void CheckSpeechBandAndMetallicSidebands()
           SpectralMagnitude(voice, 22050, 1065.) > carrier * 0.07,
           "Metallic modulation must produce sidebands while retaining the speech carrier");
 }
+
+void CheckWordStress()
+{
+  Require(WithReducedWordEmphasis(WithNeutralSentenceEnding("quarter")) == "\\emph=0\\quarter.",
+          "Standalone quarter must be de-emphasized and end as a statement");
+  Require(WithReducedWordEmphasis(WithNeutralSentenceEnding("A quarter past three!")) ==
+          "\\emph=0\\A \\emph=0\\quarter \\emph=0\\past \\emph=0\\three.",
+          "De-emphasis must also apply to quarter and other words inside sentences");
+  Require(WithReducedWordEmphasis(WithNeutralSentenceEnding("Would you like another quarter?")) ==
+          "\\emph=0\\Would \\emph=0\\you \\emph=0\\like \\emph=0\\another \\emph=0\\quarter?",
+          "Reduced word stress must preserve question punctuation");
+  Require(WithReducedWordEmphasis("  Don't\tchange $72.50 at 3:30\nPM.  ") ==
+          "  \\emph=0\\Don't\t\\emph=0\\change \\emph=0\\$72.50 \\emph=0\\at \\emph=0\\3:30\n\\emph=0\\PM.  ",
+          "Adding tags must preserve contractions, numeric tokens, and whitespace");
+  Require(WithReducedWordEmphasis(u8"\u201cCaf\u00e9 is open.\u201d") ==
+          u8"\\emph=0\\\u201cCaf\u00e9 \\emph=0\\is \\emph=0\\open.\u201d",
+          "Tagging must preserve UTF-8 names and quotes");
+  for (const std::string text : {"", " \t\n", "...", "?!", u8"\u2026"}) {
+    Require(WithReducedWordEmphasis(text) == text, "Empty and punctuation-only text must stay intact");
+  }
+  for (const std::string text : {"\\pit=90\\Ready", "<speak>Ready!</speak>", "x > y",
+                                 "\\emph=1\\Ready!", "C:\\robot", "1 < 2"}) {
+    Require(WithReducedWordEmphasis(WithNeutralSentenceEnding(text)) == text,
+            "Caller markup must own its delivery and bypass automatic text changes");
+  }
+}
 } // namespace
 
 int main()
@@ -155,7 +184,8 @@ int main()
     CheckSilenceAndHeadroom();
     CheckChunkContinuityAndReset();
     CheckSpeechBandAndMetallicSidebands();
-    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands\n";
+    CheckWordStress();
+    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, word stress\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL: " << error.what() << '\n';

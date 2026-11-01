@@ -104,6 +104,7 @@ TextToSpeechProviderConfig::TextToSpeechProviderConfig(const std::string & langu
     JsonTools::GetValueOptional(language_config, "pitchRangeMin_percent", _tts_pitchRangeMin_percent);
     JsonTools::GetValueOptional(language_config, "pitchRangeMax_percent", _tts_pitchRangeMax_percent);
     JsonTools::GetValueOptional(language_config, "neutralSentenceEndings", _tts_neutralSentenceEndings);
+    JsonTools::GetValueOptional(language_config, "reduceWordEmphasis", _tts_reduceWordEmphasis);
     JsonTools::GetValueOptional(language_config, "tacticalDroidEffect", _tts_tacticalDroidEffect);
     JsonTools::GetValueOptional(language_config, TTS_PAUSEPUNCTUATION_KEY, _tts_pausepunctuation);
   }

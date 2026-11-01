@@ -346,6 +346,9 @@ Result TextToSpeechProviderImpl::GetFirstAudioData(const std::string & text,
   #undef SETPARAM
 
   _str = _tts_config->GetNeutralSentenceEndings() ? WithNeutralSentenceEnding(text) : text;
+  if (_tts_config->GetReduceWordEmphasis()) {
+    _str = WithReducedWordEmphasis(_str);
+  }
   _strlen = _str.size();
   _strpos = 0;
   _draining = false;

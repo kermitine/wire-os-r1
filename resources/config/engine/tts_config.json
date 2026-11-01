@@ -72,8 +72,9 @@
       "pitch": 80,
       "shaping": 110,
       "pitchRangeMin_percent": 95,
-      "pitchRangeMax_percent": 105,
+      "pitchRangeMax_percent": 100,
       "neutralSentenceEndings": true,
+      "reduceWordEmphasis": true,
       "tacticalDroidEffect": true
     },
     "fr":

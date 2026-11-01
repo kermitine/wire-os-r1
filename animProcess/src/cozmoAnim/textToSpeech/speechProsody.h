@@ -51,6 +51,43 @@ inline std::string WithNeutralSentenceEnding(const std::string& text)
   return result;
 }
 
+// Acapela's emphasis tag applies to the next word, rather than the whole
+// utterance. Request less stress throughout plain English speech. Only insert
+// at whitespace boundaries so contractions, dates, numbers, and UTF-8 bytes
+// remain intact. Explicit caller markup owns its own delivery.
+inline std::string WithReducedWordEmphasis(const std::string& text)
+{
+  if (text.find_first_of("\\<>") != std::string::npos) {
+    return text;
+  }
+
+  const char* whitespace = " \t\r\n\f\v";
+  std::string result;
+  size_t position = 0;
+  while (position < text.size()) {
+    const auto begin = text.find_first_not_of(whitespace, position);
+    if (begin == std::string::npos) {
+      result.append(text, position, text.size() - position);
+      break;
+    }
+    result.append(text, position, begin - position);
+    const auto nextSpace = text.find_first_of(whitespace, begin);
+    const auto end = nextSpace == std::string::npos ? text.size() : nextSpace;
+
+    bool hasWord = false;
+    for (size_t i = begin; i < end && !hasWord; ++i) {
+      const auto c = text[i];
+      hasWord = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    }
+    if (hasWord) {
+      result += "\\emph=0\\";
+    }
+    result.append(text, begin, end - begin);
+    position = end;
+  }
+  return result;
+}
+
 } // namespace TextToSpeech
 } // namespace Vector
 } // namespace Anki
