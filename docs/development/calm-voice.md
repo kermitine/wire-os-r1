@@ -1,92 +1,124 @@
-# Lower-pitched English speech at the original pace
+# Kalani-inspired native English speech
 
-The English native TTS configuration in `resources/config/engine/tts_config.json`
-restores the original speaking pace and lowers the pitch for a deeper,
-CASE-inspired delivery. It replaces the earlier slowdown:
+The robot's native English speech uses a tactical-droid preset aimed at
+General Kalani's voice in *The Clone Wars*. The reference character is
+[General Kalani](https://www.starwars.com/databank/general-kalani).
+This combines a lower register and restrained intonation with metallic audio
+coloration. It processes the existing Acapela Ben voice; resemblance to the
+character needs a listening check on Vector.
 
-| Setting | Original | Previous calm voice | Current |
+## Synthesizer settings
+
+`resources/config/engine/tts_config.json` contains these English settings:
+
+| Setting | Original | Previous lower-pitch baseline | Current robot |
 | --- | --- | --- | --- |
-| Base speed | 80 | 76 | 80 |
-| Speed for text longer than 10 characters | 83 | 76 | 83 |
+| Base speed | 80 | 80 | 80 |
+| Speed for text longer than 10 characters | 83 | 83 | 83 |
 | Speed for text up to 10 characters | 68 | 68 | 68 |
-| Pitch | 100 | 94 | 85 |
-| Voice shaping | 130 | 120 | 120 |
+| Pitch | 100 | 85 | 80 |
+| Voice shaping | 130 | 120 | 110 |
+| `pitchRangeMin_percent` | unset | 85 | 95 |
+| `pitchRangeMax_percent` | unset | 115 | 105 |
+| `neutralSentenceEndings` | false | true | true |
+| `tacticalDroidEffect` | false | false | true |
 
-Both the robot (`vicos`) and macOS English entries use these settings. Pitch and
-shaping are synthesizer parameters, not percentages of acoustic frequency.
-The pitch setting of 85 is a starting point for a noticeably deeper voice;
-the warmer shaping from the previous configuration is retained. The providers
-pass speed and pitch separately to Acapela, so lowering pitch does not require
-slowing speech or changing the playback sample rate.
-Volume, equalization, punctuation pauses, and the selected base voice retain
-their existing settings. Other languages retain their existing configuration.
+Speaking speed is preserved. Pitch and shaping are synthesizer parameters,
+not percentages of acoustic frequency. macOS retains the previous baseline
+(pitch 85, shaping 120, original speed), without the robot-only prosody and
+audio effects. Other languages retain their configuration.
 
-The speed traits override the base speed for matching text lengths, so the
-longer-text trait is restored along with the base. The existing inclusive
-ranges overlap at 10 characters; the first matching trait wins, retaining speed
-68 for that boundary. Text outside the traits uses the original base speed, 80.
+Speed traits override the base speed. Their existing inclusive ranges overlap
+at 10 characters; the first match retains speed 68 at that boundary. The
+synthesizer divides speed by each request's duration scalar, as before. For
+example, longer replies at duration scalar 0.95 use 83 / 0.95, about 87.4.
 
-The synthesizer still divides speed by each request's duration scalar. With a
-scalar of 0.95, longer replies use 83 / 0.95, or about 87.4, restored from 80.
-With a scalar of 1.0, they use 83, restored from 76. Short acknowledgements
-retain their original pace as well.
-
-## On-robot intonation
-
-The robot's English configuration also enables these optional controls:
-
-| Setting | Value |
-| --- | --- |
-| `pitchRangeMin_percent` | 85 |
-| `pitchRangeMax_percent` | 115 |
-| `neutralSentenceEndings` | true |
-
-The range limits are passed to Acapela's `BABIL_PARM_MINPITCH` and
+The pitch limits are passed to Acapela's `BABIL_PARM_MINPITCH` and
 `BABIL_PARM_MAXPITCH` after each synthesis reset. They follow the request's
-adjusted pitch, including `pitchScalar`. At pitch 85 the requested range is
-72 to 97. This is an experimental request for a more restrained contour:
-the SDK exposes these controls, but their audible effect on the bundled Ben
-Colibri voice has not been verified. A rejected setting logs a warning and
-speech continues. Acceptance alone does not prove the voice uses the limits.
-Missing or invalid range settings leave the voice defaults in place.
+adjusted pitch, including `pitchScalar`. At pitch 80 the requested range is
+76 to 84. These controls are experimental: their audible effect on the bundled
+voice has not been verified. A rejected setting logs a warning and speech
+continues. Acceptance alone does not prove the voice uses the limits. Missing
+or invalid ranges leave the voice's default contour in place.
 
-Neutral sentence endings turn unfinished statements and final exclamations
-into full stops: `Your timer is ready` and `Your timer is ready!` both become
-`Your timer is ready.` for synthesis. Questions, already completed sentences,
-ellipses, and explicit speech markup are preserved. Acapela documents that
-full stops encourage downward intonation, while commas encourage a rise:
-[Acapela voice tuning](https://www.acapela-group.com/voices/voice-tuning/).
-This improves sentence endings; it does not rewrite the voice's learned
-intonation throughout a sentence. Speed traits still use the original text
-length, before this punctuation change.
+Neutral sentence endings complete unfinished statements and replace final
+exclamations with full stops: `Your timer is ready` and `Your timer is ready!`
+both become `Your timer is ready.` for synthesis. Questions, completed
+sentences, ellipses, and explicit speech markup are preserved. This encourages
+completed statement endings without changing the words or rewriting the
+entire voice contour. Speed traits use the original text length.
 
-These additional controls run in the animation process on the robot, without
-an external speech service. macOS retains its pitch and speed configuration
-but does not apply the on-robot prosody controls. Other languages are unchanged.
-Set both range values to 0 and `neutralSentenceEndings` to false to disable
-the additional controls.
+## Metallic audio effect
 
-The intonation changes require rebuilding and deploying the animation binary
-along with the updated resources, then restarting the animation process.
-Pitch/speed-only changes need a resource deployment and restart. They apply to native
-synthesized English speech, including Rocket-Pod's native `SayText` requests.
+`tacticalDroidEffect: true` enables `TacticalDroidVoiceEffect` in the robot's
+native TTS provider, immediately after each mono PCM chunk is synthesized:
+
+- A 140 Hz high-pass and two 3.6 kHz low-pass stages shape the speech band.
+- A 6 ms, 16% feed-forward delay adds short metallic resonance.
+- A 65 Hz partial ring modulator adds electronic sidebands while retaining
+  the speech carrier.
+- Gentle saturation adds texture with output headroom and bounded 16-bit PCM.
+
+The processor retains filter, delay, and modulation state across synthesis
+chunks and resets at the start of each utterance. Processing is in place,
+with no changes to sample rate, sample count, or speaking duration. There is
+no feedback delay or added reverb tail. Memory allocation happens on reset,
+outside the sample-processing loop. Missing or false settings give exact PCM
+passthrough. Unsupported sample rates also bypass processing.
+
+This effect is part of the native provider, before the existing Wwise
+processing. It therefore applies to native speech even if a caller selects
+the Wwise `Unprocessed` style; that style only bypasses Wwise's processing.
 Externally generated speech streamed by Rocket-Pod and prerecorded character
-sounds use separate audio paths and do not inherit these settings.
+sounds use separate paths and do not inherit this preset. Native Rocket-Pod
+`SayText` requests do inherit it.
 
-The source configuration and effective rates can be checked on the desktop,
-but the result still needs a listening check on Vector. In particular, verify
-that the installed voice accepts the pitch and shaping controls, and listen
-for a deeper tone, consonant clarity, consistent loudness, and the restored
-pace through the robot processing. This tunes the existing Ben voice rather
-than reproducing CASE's voice exactly.
-Useful sample phrases are:
+## Build, verify, and tune
 
+Rebuild and deploy the animation binary and updated resources, then restart
+the animation process. See the repository README for the supported Linux and
+macOS build/deployment workflow. Resource-only deployment is insufficient for
+the new PCM effect.
+
+A standalone regression test exercises actual DSP output without the robot
+SDK. From the repository root on Linux or macOS:
+
+```sh
+mkdir -p _build/tactical-droid-check
+c++ -std=c++14 -O2 -Wall -Wextra -pedantic -IanimProcess/src \
+  tools/voice/test_tactical_droid_voice.cpp \
+  -o _build/tactical-droid-check/test_tactical_droid_voice
+_build/tactical-droid-check/test_tactical_droid_voice
+```
+
+Or from a Visual Studio Developer PowerShell prompt:
+
+```powershell
+New-Item -ItemType Directory -Force _build/tactical-droid-check | Out-Null
+cl /nologo /std:c++14 /EHsc /W4 /IanimProcess/src `
+  tools/voice/test_tactical_droid_voice.cpp `
+  /Fo_build/tactical-droid-check/ /Fe_build/tactical-droid-check/test_tactical_droid_voice.exe
+& _build/tactical-droid-check/test_tactical_droid_voice.exe
+```
+
+Checks cover exact bypass, silence, headroom at several sample rates,
+sample-identical output across different chunk sizes, utterance reset and sample-rate changes,
+speech-band preservation, and the modulation sidebands. These checks establish
+signal behavior; they do not establish an audible character match.
+
+Listen on Vector for the lower tone, metallic texture, clear consonants,
+consistent loudness, and absence of clicks or exaggerated warbling. The small
+speaker and existing Wwise effects influence the final result. Useful phrases:
+
+- "The probability of success is high."
 - "Your timer is ready."
 - "The temperature is seventy-two degrees."
 - "You have a reminder at three thirty."
-- "Your timer is ready" (should have a completed statement ending).
-- "Your timer is ready!" (should have a more restrained ending).
-- "Would you like another timer?" (should remain a question).
+- "Would you like another timer?"
 
-To restore the original English voice settings, use the Original values in the
-table for both English configuration entries and redeploy the resources.
+To retain the synthesizer tuning but remove the metallic coloration, set
+`tacticalDroidEffect` to false and redeploy resources. To restore the previous
+lower-pitched robot voice, also restore pitch 85, shaping 120, and pitch range
+85 to 115. To restore the original voice, use pitch 100 and shaping 130, set
+both range values to 0, and set `neutralSentenceEndings` to false. Restart the
+animation process after changing the resources.

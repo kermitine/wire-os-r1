@@ -18,6 +18,7 @@
 
 #include "textToSpeechProvider.h"
 #include "textToSpeechProviderConfig.h"
+#include "tacticalDroidVoiceEffect.h"
 #include "json/json.h"
 
 #include <string>
@@ -106,6 +107,7 @@ private:
   size_t _strlen = 0;
   size_t _strpos = 0;
   bool _draining = false;
+  TacticalDroidVoiceEffect _voiceEffect;
 
   //
   // Internal state management

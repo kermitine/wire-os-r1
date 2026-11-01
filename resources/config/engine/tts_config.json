@@ -69,11 +69,12 @@
         { "textLengthMin": 0, "textLengthMax": 10, "rangeMin": 68, "rangeMax": 68},
         { "textLengthMin": 10, "textLengthMax": 9999, "rangeMin": 83, "rangeMax": 83}
       ],
-      "pitch": 85,
-      "shaping": 120,
-      "pitchRangeMin_percent": 85,
-      "pitchRangeMax_percent": 115,
-      "neutralSentenceEndings": true
+      "pitch": 80,
+      "shaping": 110,
+      "pitchRangeMin_percent": 95,
+      "pitchRangeMax_percent": 105,
+      "neutralSentenceEndings": true,
+      "tacticalDroidEffect": true
     },
     "fr":
     {

@@ -350,6 +350,10 @@ Result TextToSpeechProviderImpl::GetFirstAudioData(const std::string & text,
   _strpos = 0;
   _draining = false;
 
+  // Reset once per utterance, including locale changes and cancelled speech.
+  // The effect retains its filter, carrier, and delay state across chunks.
+  _voiceEffect.Reset(_BAB_voicefreq, _tts_config->GetTacticalDroidEffect());
+
   return GetNextAudioData(data, done);
 }
 
@@ -389,6 +393,8 @@ Result TextToSpeechProviderImpl::GetNextAudioData(TextToSpeechProviderData & dat
   }
 
   if (numSamples > 0) {
+    _voiceEffect.Process(samples, numSamples);
+
     // Add samples to result
     data.Init(_BAB_voicefreq, 1);
     data.AppendSamples(samples, numSamples);
