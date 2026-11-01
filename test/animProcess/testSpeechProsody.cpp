@@ -65,3 +65,21 @@ TEST(SpeechProsody, PreservesCallerMarkupWhenReducingStress)
     EXPECT_EQ(text, WithReducedWordEmphasis(WithNeutralSentenceEnding(text)));
   }
 }
+
+TEST(SpeechProsody, KeepsMinutePronunciationContextTogether)
+{
+  EXPECT_EQ("\\emph=0\\One minute.", WithReducedWordEmphasis("One minute."));
+  EXPECT_EQ("\\emph=0\\one minute left.", WithReducedWordEmphasis("one minute left."));
+  EXPECT_EQ("\\emph=0\\Your \\emph=0\\one minute timer \\emph=0\\is \\emph=0\\ready.",
+            WithReducedWordEmphasis("Your one minute timer is ready."));
+  EXPECT_EQ("\\emph=0\\A minute detail \\emph=0\\matters.",
+            WithReducedWordEmphasis("A minute detail matters."));
+  EXPECT_EQ("Minute details \\emph=0\\matter.", WithReducedWordEmphasis("Minute details matter."));
+  EXPECT_EQ("minute.", WithReducedWordEmphasis(WithNeutralSentenceEnding("minute")));
+  EXPECT_EQ("\\emph=0\\Wait \\emph=0\\1 MINUTE, please.",
+            WithReducedWordEmphasis("Wait 1 MINUTE, please."));
+  EXPECT_EQ("\\emph=0\\Two minutes remaining.", WithReducedWordEmphasis("Two minutes remaining."));
+  EXPECT_EQ("\\emph=0\\A one-minute timer.", WithReducedWordEmphasis("A one-minute timer."));
+  EXPECT_EQ("\\emph=0\\Minuteman \\emph=0\\and \\emph=0\\minutely.",
+            WithReducedWordEmphasis("Minuteman and minutely."));
+}

@@ -55,7 +55,8 @@ the enthusiastic word endings that remain after lowering the voice and
 normalizing final punctuation. Acapela exposes a decrease-emphasis control
 in its [voice editor](https://www.acapela-cloud.com/editor/). The native text
 preparation inserts `\emph=0\` before each whitespace-delimited token containing
-letters or digits, so words inside the sentence receive the instruction too.
+letters or digits, with a pronunciation-context exception described below,
+so words inside the sentence receive the instruction too.
 For example, `A quarter past three!` is prepared as:
 
 ```text
@@ -71,6 +72,15 @@ This is a request to the speech engine, rather than a measured correction of
 the waveform's pitch: its audible effect depends on the bundled voice, and
 does not guarantee a downward pitch sweep on every syllable. Verify the
 response on Vector before judging whether it removes the reported inflection.
+
+The word "minute" (including "minutes" and hyphenated compounds) and its next
+word retain native stress without an intervening emphasis tag. This preserves
+the quantity/unit context in "one minute" and the adjective context in
+"minute details", following a report of the time unit being spoken as
+"mine-oot" after the word-level changes. The fix removes the potentially
+disruptive tags rather than respelling every occurrence of "minute". Other
+words retain reduced emphasis. Test the actual time-unit pronunciation on
+Vector; desktop tests verify intact context, not the synthesized phonemes.
 
 ## Metallic audio effect
 
@@ -128,7 +138,8 @@ cl /nologo /std:c++14 /EHsc /W4 /IanimProcess/src `
 Checks cover exact bypass, silence, headroom at several sample rates,
 sample-identical output across different chunk sizes, utterance reset and sample-rate changes,
 speech-band preservation, the modulation sidebands, and word-level text
-preparation (including "quarter", questions, numbers, and caller markup).
+preparation (including "quarter", questions, numbers, caller markup, and
+intact "minute" pronunciation context).
 These checks establish
 signal behavior; they do not establish an audible character match.
 
@@ -140,6 +151,10 @@ speaker and existing Wwise effects influence the final result. Useful phrases:
 - "Quarter."
 - "A quarter past three."
 - "The quarter is on the table."
+- "One minute."
+- "Your one minute timer is ready."
+- "Two minutes remaining."
+- "A minute detail matters." (should retain the adjective reading).
 - "Your timer is ready."
 - "The temperature is seventy-two degrees."
 - "You have a reminder at three thirty."

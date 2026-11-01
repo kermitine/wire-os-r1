@@ -51,10 +51,38 @@ inline std::string WithNeutralSentenceEnding(const std::string& text)
   return result;
 }
 
+// "Minute" has different noun and adjective readings. Keep its immediate
+// linguistic context free of inserted tags so the native engine can choose
+// the pronunciation from the phrase ("one minute" / "minute details").
+inline bool ContainsMinuteHomograph(std::string token)
+{
+  for (auto& c : token) {
+    if (c >= 'A' && c <= 'Z') {
+      c = static_cast<char>(c - 'A' + 'a');
+    }
+  }
+  const auto isWordCharacter = [](unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c >= 0x80;
+  };
+  for (auto begin = token.find("minute"); begin != std::string::npos;
+       begin = token.find("minute", begin + 1)) {
+    auto end = begin + 6;
+    if (end < token.size() && token[end] == 's') {
+      ++end;
+    }
+    if ((begin == 0 || !isWordCharacter(token[begin - 1])) &&
+        (end == token.size() || !isWordCharacter(token[end]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Acapela's emphasis tag applies to the next word, rather than the whole
 // utterance. Request less stress throughout plain English speech. Only insert
 // at whitespace boundaries so contractions, dates, numbers, and UTF-8 bytes
-// remain intact. Explicit caller markup owns its own delivery.
+// remain intact. Preserve the word after "minute" as well, since it can
+// distinguish time phrases from adjective phrases. Caller markup owns its delivery.
 inline std::string WithReducedWordEmphasis(const std::string& text)
 {
   if (text.find_first_of("\\<>") != std::string::npos) {
@@ -64,6 +92,7 @@ inline std::string WithReducedWordEmphasis(const std::string& text)
   const char* whitespace = " \t\r\n\f\v";
   std::string result;
   size_t position = 0;
+  bool previousWordNeedsContext = false;
   while (position < text.size()) {
     const auto begin = text.find_first_not_of(whitespace, position);
     if (begin == std::string::npos) {
@@ -79,10 +108,14 @@ inline std::string WithReducedWordEmphasis(const std::string& text)
       const auto c = text[i];
       hasWord = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
     }
-    if (hasWord) {
+    const bool needsContext = hasWord && ContainsMinuteHomograph(text.substr(begin, end - begin));
+    if (hasWord && !needsContext && !previousWordNeedsContext) {
       result += "\\emph=0\\";
     }
     result.append(text, begin, end - begin);
+    if (hasWord) {
+      previousWordNeedsContext = needsContext;
+    }
     position = end;
   }
   return result;

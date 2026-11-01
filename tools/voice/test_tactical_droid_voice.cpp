@@ -175,6 +175,31 @@ void CheckWordStress()
             "Caller markup must own its delivery and bypass automatic text changes");
   }
 }
+
+void CheckMinutePronunciationContext()
+{
+  Require(WithReducedWordEmphasis("One minute.") == "\\emph=0\\One minute.",
+          "Time-unit minute must remain adjacent to its quantity without an inserted tag");
+  Require(WithReducedWordEmphasis("Your one minute timer is ready.") ==
+          "\\emph=0\\Your \\emph=0\\one minute timer \\emph=0\\is \\emph=0\\ready.",
+          "Keep minute's context together and resume reduced stress afterward");
+  Require(WithReducedWordEmphasis("A minute detail matters.") ==
+          "\\emph=0\\A minute detail \\emph=0\\matters.",
+          "Adjective minute must retain its following noun without forced respelling");
+  Require(WithReducedWordEmphasis("Minute details matter.") == "Minute details \\emph=0\\matter.",
+          "Sentence-initial minute must also retain its context");
+  Require(WithReducedWordEmphasis(WithNeutralSentenceEnding("minute")) == "minute.",
+          "Standalone minute must keep native word stress");
+  Require(WithReducedWordEmphasis("Wait 1 MINUTE, please.") == "\\emph=0\\Wait \\emph=0\\1 MINUTE, please.",
+          "Minute context protection must handle case and punctuation");
+  Require(WithReducedWordEmphasis("Two minutes remaining.") == "\\emph=0\\Two minutes remaining.",
+          "Plural minutes must retain quantity and following context");
+  Require(WithReducedWordEmphasis("A one-minute timer.") == "\\emph=0\\A one-minute timer.",
+          "Hyphenated minute compounds must preserve native stress");
+  Require(WithReducedWordEmphasis("Minuteman and minutely.") ==
+          "\\emph=0\\Minuteman \\emph=0\\and \\emph=0\\minutely.",
+          "The minute exception must not match longer words");
+}
 } // namespace
 
 int main()
@@ -185,7 +210,8 @@ int main()
     CheckChunkContinuityAndReset();
     CheckSpeechBandAndMetallicSidebands();
     CheckWordStress();
-    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, word stress\n";
+    CheckMinutePronunciationContext();
+    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, word stress, minute context\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL: " << error.what() << '\n';
