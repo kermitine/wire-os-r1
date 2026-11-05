@@ -477,6 +477,9 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
     Point<2, Value> eyeCenter = (whichEye == WhichEye::Left) ?
                                  Point<2, Value>(ProceduralFace::GetNominalLeftEyeX(), ProceduralFace::GetNominalEyeY()) :
                                  Point<2, Value>(ProceduralFace::GetNominalRightEyeX(), ProceduralFace::GetNominalEyeY());
+    // Space the visor eyes farther apart before applying the animated transforms.
+    const Value outwardOffset = isHeptagon ? 4.f : 0.f;
+    eyeCenter.x() += (whichEye == WhichEye::Left) ? -outwardOffset : outwardOffset;
     eyeCenter.x() += faceData.GetParameter(whichEye, Parameter::EyeCenterX);
     eyeCenter.y() += faceData.GetParameter(whichEye, Parameter::EyeCenterY);
 
