@@ -3,7 +3,8 @@
 The robot's native English speech uses a tactical-droid preset aimed at
 General Kalani's voice in *The Clone Wars*. The reference character is
 [General Kalani](https://www.starwars.com/databank/general-kalani).
-This combines a fixed low pitch with metallic audio coloration. It processes
+This combines a fixed low pitch with natural consonant detail and optional
+metallic audio coloration. It processes
 the existing Acapela Ben voice; resemblance to the character needs a listening
 check on Vector.
 
@@ -24,6 +25,7 @@ check on Vector.
 | `reduceWordEmphasis` | false | false | false |
 | `tacticalDroidEffect` | false | false | true |
 | `roboticPitch_hz` | unset | unset | 85 |
+| `metallicMix_percent` | unset | unset | 0 |
 
 Speaking speed is preserved. Pitch and shaping are synthesizer parameters,
 not percentages of acoustic frequency. macOS retains the previous baseline
@@ -93,18 +95,32 @@ Vector; desktop tests verify intact context, not the synthesized phonemes.
 ## Fixed low pitch and metallic audio effect
 
 `roboticPitch_hz: 85`, together with `tacticalDroidEffect: true`, enables a
-20-band channel vocoder before the metallic effect. Speech supplies the changing
+20-band channel vocoder before the optional metallic effect. Speech supplies the changing
 frequency-band envelopes, preserving syllable timing and the changing shapes
 of vowels and consonants. A harmonic carrier supplies a steady 85 Hz pitch
 (harmonics at 170 Hz, 255 Hz, and so on), replacing the source's rising pitch.
-This produces a more electronic, monotone delivery; it is not a recording or
-model of Kalani's voice. The texture and consonant clarity need a listening
-check on Vector.
+To improve clarity, a fourth-order crossover keeps vocoded speech below
+1.8 kHz and passes the original speech above that frequency. This preserves
+high-frequency consonants and fast speech detail instead of making them buzz
+at the carrier pitch. The crossover is limited to 20% of the sample rate at
+lower sample rates. Its steep high-pass suppresses the original fundamental,
+retaining the low voiced register. The filter coefficients follow the
+[W3C Audio EQ Cookbook](https://www.w3.org/TR/audio-eq-cookbook/).
+
+The current English preset sets `metallicMix_percent: 0`, bypassing the added
+comb delay, ring modulation, speech-band filtering, and saturation. The 85 Hz
+carrier stays active. This targets the reported excessive metallic texture and
+poor intelligibility. It is not a recording or model of Kalani's voice; the
+result still needs a listening check on Vector.
+
+`metallicMix_percent` accepts 0 to 100. Zero gives the clearer voice, 10 adds a
+small amount of coloration, and 100 restores the full metallic layer. A missing
+setting defaults to 100 for compatibility; out-of-range values are clamped.
 
 The setting accepts integer frequencies from 60 to 140 Hz. Try 75 for a deeper
 carrier, 85 for the current preset, or 100 for a higher carrier. This frequency
 is separate from Acapela's `pitch` parameter. A missing, zero, or invalid value
-disables the vocoder and retains the previous metallic effect. Invalid nonzero
+disables the vocoder; coloration then follows `metallicMix_percent`. Invalid nonzero
 values also log a configuration warning. Setting `tacticalDroidEffect` false
 bypasses both audio processors.
 
@@ -131,6 +147,11 @@ mono PCM chunk:
   frequency follows `roboticPitch_hz` to keep sidebands on the same harmonic
   grid; otherwise it uses the previous 65 Hz modulation.
 - Gentle saturation adds texture with output headroom and bounded 16-bit PCM.
+
+These stages are blended with the clearer voice according to
+`metallicMix_percent` and are bypassed entirely at zero. This blend is between
+the clean and colored pitch-processed audio, so reducing metallic strength
+does not mix the original low-frequency pitch back into speech.
 
 The processor retains filter, delay, and modulation state across synthesis
 chunks and resets at the start of each utterance. Processing is in place,
@@ -178,7 +199,9 @@ Checks cover exact bypass, silence, headroom at several sample rates,
 sample-identical output across different chunk sizes, utterance reset and sample-rate changes,
 speech-band preservation, the modulation sidebands, replacement of different
 source pitches by the configured carrier (including after metallic processing),
-vocoder bypass, silence and decay, and word-level text
+vocoder bypass, silence and decay, preservation of original high-frequency
+detail, suppression of metallic sidebands at zero mix, metallic mix bounds,
+streaming at 0/25/100 percent mix, and word-level text
 preparation (including "quarter", questions, numbers, caller markup, and
 intact "minute" pronunciation context).
 These checks establish
@@ -206,8 +229,9 @@ speaker and existing Wwise effects influence the final result. Useful phrases:
 - "You have a reminder at three thirty."
 - "Would you like another timer?"
 
-To keep the previous metallic effect with its natural speech inflection, set
-`roboticPitch_hz` to 0. To retain the synthesizer tuning but remove both
+To restore the full metallic layer while retaining clear consonants, set
+`metallicMix_percent` to 100. To use that layer with natural speech inflection,
+also set `roboticPitch_hz` to 0. To retain the synthesizer tuning but remove both
 the vocoder and metallic coloration, set
 `tacticalDroidEffect` to false and redeploy resources. To restore the previous
 lower-pitched robot voice, also restore pitch 85, shaping 120, and pitch range

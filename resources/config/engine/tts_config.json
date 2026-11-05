@@ -76,7 +76,8 @@
       "neutralSentenceEndings": true,
       "reduceWordEmphasis": false,
       "tacticalDroidEffect": true,
-      "roboticPitch_hz": 85
+      "roboticPitch_hz": 85,
+      "metallicMix_percent": 0
     },
     "fr":
     {

@@ -13,13 +13,15 @@ namespace TextToSpeech {
 
 // A restrained tactical-droid coloration for mono, signed 16-bit TTS audio.
 // Keep state across synthesis chunks and reset once per utterance. This does
-// not resample audio, change its duration, or synthesize a replacement voice.
+// not change sample rate, sample count, or playback duration. Metallic strength
+// is independent of the low-pitch carrier and restored consonant detail.
 class TacticalDroidVoiceEffect
 {
 public:
-  void Reset(int sampleRate, bool enabled, int roboticPitch_hz = 0)
+  void Reset(int sampleRate, bool enabled, int roboticPitch_hz = 0, int metallicMix_percent = 100)
   {
     _enabled = enabled && sampleRate >= 8000 && sampleRate <= 192000;
+    _metallicMix = std::max(0, std::min(100, metallicMix_percent)) / 100.f;
     _fixedPitch.Reset(sampleRate, _enabled ? roboticPitch_hz : 0);
     _previousInput = _highPass = _lowPass1 = _lowPass2 = 0.f;
     _phase = 0.f;
@@ -45,6 +47,10 @@ public:
     }
 
     _fixedPitch.Process(samples, numSamples);
+    // Pitch correction and natural speech detail remain active at zero metal.
+    if (_metallicMix == 0.f) {
+      return;
+    }
     for (size_t i = 0; i < numSamples; ++i) {
       const float input = samples[i] / 32768.f;
       _highPass = _highPassCoefficient * (_highPass + input - _previousInput);
@@ -65,7 +71,8 @@ public:
 
       // Gentle saturation adds texture with output headroom. Clamp before
       // converting back to PCM, even for full-scale input and transients.
-      const float output = 0.82f * std::tanh(1.4f * metallic);
+      const float colored = 0.82f * std::tanh(1.4f * metallic);
+      const float output = (1.f - _metallicMix) * input + _metallicMix * colored;
       const float pcm = std::max(-32768.f, std::min(32767.f, output * 32768.f));
       samples[i] = static_cast<short>(std::round(pcm));
     }
@@ -74,6 +81,7 @@ public:
 private:
   static constexpr float kTwoPi = 6.2831853071795864769f;
   bool _enabled = false;
+  float _metallicMix = 1.f;
   FixedPitchVoiceEffect _fixedPitch;
   float _highPassCoefficient = 0.f;
   float _lowPassCoefficient = 0.f;

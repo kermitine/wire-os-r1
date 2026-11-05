@@ -169,12 +169,12 @@ void CheckFixedPitch()
   constexpr int sampleRate = 22050;
   // Model a low syllable followed by a higher one, like the reported upspeak.
   // Check both the vocoder and its actual downstream metallic processing.
-  for (const bool metallic : {false, true}) {
+  for (const int metallicMix : {-1, 0, 100}) {
     for (const double sourcePitch : {120., 210.}) {
       auto samples = HarmonicVoice(sampleRate, sourcePitch);
-      if (metallic) {
+      if (metallicMix >= 0) {
         TacticalDroidVoiceEffect effect;
-        effect.Reset(sampleRate, true, 85);
+        effect.Reset(sampleRate, true, 85, metallicMix);
         effect.Process(samples.data(), samples.size());
       } else {
         FixedPitchVoiceEffect effect;
@@ -200,29 +200,29 @@ void CheckFixedPitch()
   }
 }
 
-void CheckFixedPitchStreaming()
+void CheckFixedPitchStreaming(int metallicMix)
 {
   const auto original = HarmonicVoice(22050, 173.);
   TacticalDroidVoiceEffect effect;
-  effect.Reset(22050, true, 85);
+  effect.Reset(22050, true, 85, metallicMix);
   auto whole = original;
   effect.Process(whole.data(), whole.size());
   for (const size_t chunkSize : {size_t(1), size_t(17), size_t(2048)}) {
-    effect.Reset(22050, true, 85);
+    effect.Reset(22050, true, 85, metallicMix);
     auto chunked = original;
     for (size_t i = 0; i < chunked.size(); i += chunkSize) {
       effect.Process(chunked.data() + i, std::min(chunkSize, chunked.size() - i));
     }
     Require(chunked == whole, "Fixed-pitch output must be independent of synthesis chunk boundaries");
   }
-  effect.Reset(48000, true, 100);
+  effect.Reset(48000, true, 100, metallicMix);
   auto otherRate = Tone(48000, 300.);
   effect.Process(otherRate.data(), otherRate.size());
-  effect.Reset(22050, true, 85);
+  effect.Reset(22050, true, 85, metallicMix);
   auto restarted = original;
   effect.Process(restarted.data(), restarted.size());
   Require(restarted == whole, "Reset must clear vocoder envelopes and oscillators");
-  effect.Reset(22050, false, 85);
+  effect.Reset(22050, false, 85, metallicMix);
   auto bypassed = original;
   effect.Process(bypassed.data(), bypassed.size());
   Require(bypassed == original, "Disabling the metallic effect must also bypass the vocoder exactly");
@@ -242,7 +242,7 @@ void CheckFixedPitchStreaming()
   }
   for (const int rate : {8000, 22050, 48000, 192000}) {
     for (const int pitch : {60, 85, 140}) {
-      effect.Reset(rate, true, pitch);
+      effect.Reset(rate, true, pitch, metallicMix);
       Samples silence(rate, 0);
       effect.Process(nullptr, 100);
       effect.Process(silence.data(), 0);
@@ -254,7 +254,7 @@ void CheckFixedPitchStreaming()
       }
       effect.Process(loud.data(), loud.size());
       for (const short sample : loud) {
-        Require(std::abs(static_cast<int>(sample)) <= 26870,
+        Require(std::abs(static_cast<int>(sample)) <= (metallicMix == 100 ? 26870 : 29490),
                 "Vocoder and metallic effect must retain PCM headroom");
       }
       effect.Process(silence.data(), silence.size());
@@ -264,6 +264,48 @@ void CheckFixedPitchStreaming()
       }
     }
   }
+}
+
+void CheckSpeechDetail()
+{
+  constexpr int sampleRate = 22050;
+  TacticalDroidVoiceEffect effect;
+  for (const double frequency : {3100., 6000.}) {
+    const auto original = Tone(sampleRate, frequency);
+    auto clean = original;
+    effect.Reset(sampleRate, true, 85, 0);
+    effect.Process(clean.data(), clean.size());
+    const double originalDetail = SpectralMagnitude(original, sampleRate, frequency);
+    const double cleanDetail = SpectralMagnitude(clean, sampleRate, frequency);
+    Require(cleanDetail > originalDetail * 0.65,
+            "Clarity mode must retain original high-frequency detail rather than vocode consonants");
+    if (frequency == 3100.) {
+      auto metallic = original;
+      effect.Reset(sampleRate, true, 85, 100);
+      effect.Process(metallic.data(), metallic.size());
+      const double cleanSideband = SpectralMagnitude(clean, sampleRate, frequency - 85.);
+      Require(cleanSideband < cleanDetail * 0.02 &&
+              cleanSideband < SpectralMagnitude(metallic, sampleRate, frequency - 85.) * 0.3,
+              "Zero metallic mix must remove the extra ring-modulator sidebands");
+    }
+  }
+  // With neither vocoding nor metal, do not filter or attenuate the signal.
+  const auto original = Tone(sampleRate, 173.);
+  auto clean = original;
+  effect.Reset(sampleRate, true, 0, 0);
+  effect.Process(clean.data(), clean.size());
+  Require(clean == original, "Zero pitch and zero metal must give exact PCM passthrough");
+  auto negativeMix = original;
+  effect.Reset(sampleRate, true, 0, -1);
+  effect.Process(negativeMix.data(), negativeMix.size());
+  Require(negativeMix == original, "Negative metallic mix must clamp to zero");
+  auto fullMix = original;
+  effect.Reset(sampleRate, true, 0, 100);
+  effect.Process(fullMix.data(), fullMix.size());
+  auto excessiveMix = original;
+  effect.Reset(sampleRate, true, 0, 101);
+  effect.Process(excessiveMix.data(), excessiveMix.size());
+  Require(excessiveMix == fullMix, "Excessive metallic mix must clamp to 100 percent");
 }
 
 void CheckWordStress()
@@ -326,10 +368,13 @@ int main()
     CheckChunkContinuityAndReset();
     CheckSpeechBandAndMetallicSidebands();
     CheckFixedPitch();
-    CheckFixedPitchStreaming();
+    for (const int metallicMix : {0, 25, 100}) {
+      CheckFixedPitchStreaming(metallicMix);
+    }
+    CheckSpeechDetail();
     CheckWordStress();
     CheckMinutePronunciationContext();
-    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, fixed pitch, vocoder streaming, word stress, minute context\n";
+    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, fixed pitch, vocoder streaming, consonant detail, metallic mix, word stress, minute context\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL: " << error.what() << '\n';

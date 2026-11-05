@@ -13,7 +13,8 @@ namespace TextToSpeech {
 
 // A channel vocoder: speech supplies the changing spectral envelopes, while
 // a harmonic carrier supplies a steady pitch. No pitch tracker, text changes,
-// lookahead, or changes to sample count are needed. Reset once per utterance.
+// lookahead, or changes to sample count are needed. Original high-frequency
+// speech detail bypasses resynthesis for clearer consonants. Reset per utterance.
 class FixedPitchVoiceEffect
 {
 public:
@@ -21,10 +22,30 @@ public:
   {
     _enabled = sampleRate >= 8000 && sampleRate <= 192000 && pitch_hz >= 60 && pitch_hz <= 140;
     _bands = {};
+    _voiceLowPass = {};
+    _detailHighPass = {};
     _carriers.clear();
     _samplesUntilNormalize = 4096;
     if (!_enabled) {
       return;
+    }
+
+    // A fourth-order Linkwitz-Riley crossover keeps the low voiced register
+    // synthetic and preserves natural consonants above 1.8 kHz. Its steep
+    // high-pass rejects the source fundamental rather than mixing it back in.
+    // RBJ biquad coefficients: https://www.w3.org/TR/audio-eq-cookbook/
+    const double crossover = kTwoPi * std::min(1800., sampleRate * 0.2) / sampleRate;
+    const double cosine = std::cos(crossover);
+    const double crossoverAlpha = std::sin(crossover) / std::sqrt(2.);
+    for (size_t i = 0; i < _voiceLowPass.size(); ++i) {
+      auto& low = _voiceLowPass[i];
+      auto& high = _detailHighPass[i];
+      low.a1 = high.a1 = -2. * cosine / (1. + crossoverAlpha);
+      low.a2 = high.a2 = (1. - crossoverAlpha) / (1. + crossoverAlpha);
+      low.b0 = low.b2 = (1. - cosine) / (2. * (1. + crossoverAlpha));
+      low.b1 = 2. * low.b0;
+      high.b0 = high.b2 = (1. + cosine) / (2. * (1. + crossoverAlpha));
+      high.b1 = -2. * high.b0;
     }
 
     const double upper = std::min(5000., sampleRate * 0.42);
@@ -96,8 +117,14 @@ public:
         carrier.sine = sine;
       }
       // Rectified sine envelopes have mean 2/pi; pi/2 restores peak amplitude.
-      // Bound the intermediate PCM before the downstream metallic coloration.
-      const double pcm = 0.9 * std::tanh(output * 1.5707963267948966) * 32768.;
+      double voiced = 0.9 * std::tanh(output * 1.5707963267948966);
+      double detail = input;
+      for (size_t stage = 0; stage < _voiceLowPass.size(); ++stage) {
+        voiced = _voiceLowPass[stage].Process(voiced);
+        detail = _detailHighPass[stage].Process(detail);
+      }
+      // Retain headroom without saturating the recovered consonant detail.
+      const double pcm = std::max(-29490., std::min(29490., 0.8 * (voiced + detail) * 32768.));
       samples[i] = static_cast<short>(std::round(pcm));
       if (--_samplesUntilNormalize == 0) {
         for (auto& carrier : _carriers) {
@@ -111,6 +138,17 @@ public:
   }
 
 private:
+  struct Biquad {
+    double b0 = 0., b1 = 0., b2 = 0., a1 = 0., a2 = 0.;
+    double z1 = 0., z2 = 0.;
+    double Process(double input)
+    {
+      const double output = b0 * input + z1;
+      z1 = b1 * input - a1 * output + z2;
+      z2 = b2 * input - a2 * output;
+      return output;
+    }
+  };
   struct Band {
     float b0 = 0.f, a1 = 0.f, a2 = 0.f;
     float z1 = 0.f, z2 = 0.f;
@@ -128,6 +166,8 @@ private:
   float _envelopeStep = 0.f;
   size_t _samplesUntilNormalize = 4096;
   std::array<Band, 20> _bands{};
+  std::array<Biquad, 2> _voiceLowPass{};
+  std::array<Biquad, 2> _detailHighPass{};
   std::vector<Carrier> _carriers;
 };
 
