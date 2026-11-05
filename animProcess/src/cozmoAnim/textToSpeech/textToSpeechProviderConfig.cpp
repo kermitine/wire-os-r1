@@ -106,7 +106,14 @@ TextToSpeechProviderConfig::TextToSpeechProviderConfig(const std::string & langu
     JsonTools::GetValueOptional(language_config, "neutralSentenceEndings", _tts_neutralSentenceEndings);
     JsonTools::GetValueOptional(language_config, "reduceWordEmphasis", _tts_reduceWordEmphasis);
     JsonTools::GetValueOptional(language_config, "tacticalDroidEffect", _tts_tacticalDroidEffect);
+    JsonTools::GetValueOptional(language_config, "roboticPitch_hz", _tts_roboticPitch_hz);
     JsonTools::GetValueOptional(language_config, TTS_PAUSEPUNCTUATION_KEY, _tts_pausepunctuation);
+  }
+
+  if (_tts_roboticPitch_hz != 0 && (_tts_roboticPitch_hz < 60 || _tts_roboticPitch_hz > 140)) {
+    LOG_WARNING("TextToSpeechProviderConfig.InvalidRoboticPitch",
+                "Ignoring robotic pitch %d Hz (expected 60..140 or 0 for off)", _tts_roboticPitch_hz);
+    _tts_roboticPitch_hz = 0;
   }
 
   // Acapela's limits must straddle the current pitch. Invalid or absent ranges

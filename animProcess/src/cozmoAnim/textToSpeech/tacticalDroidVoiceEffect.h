@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <vector>
+#include "fixedPitchVoiceEffect.h"
 
 namespace Anki {
 namespace Vector {
@@ -16,9 +17,10 @@ namespace TextToSpeech {
 class TacticalDroidVoiceEffect
 {
 public:
-  void Reset(int sampleRate, bool enabled)
+  void Reset(int sampleRate, bool enabled, int roboticPitch_hz = 0)
   {
     _enabled = enabled && sampleRate >= 8000 && sampleRate <= 192000;
+    _fixedPitch.Reset(sampleRate, _enabled ? roboticPitch_hz : 0);
     _previousInput = _highPass = _lowPass1 = _lowPass2 = 0.f;
     _phase = 0.f;
     _delayIndex = 0;
@@ -30,7 +32,9 @@ public:
     // Retain body and consonants while taking the edge off the small speaker.
     _highPassCoefficient = std::exp(-kTwoPi * 140.f / sampleRate);
     _lowPassCoefficient = 1.f - std::exp(-kTwoPi * 3600.f / sampleRate);
-    _phaseStep = kTwoPi * 65.f / sampleRate;
+    // Keep metallic sidebands on the vocoder's harmonic grid when enabled.
+    const int modulation_hz = roboticPitch_hz >= 60 && roboticPitch_hz <= 140 ? roboticPitch_hz : 65;
+    _phaseStep = kTwoPi * modulation_hz / sampleRate;
     _delay.assign(std::max<size_t>(1, static_cast<size_t>(sampleRate * 0.006f)), 0.f);
   }
 
@@ -40,6 +44,7 @@ public:
       return;
     }
 
+    _fixedPitch.Process(samples, numSamples);
     for (size_t i = 0; i < numSamples; ++i) {
       const float input = samples[i] / 32768.f;
       _highPass = _highPassCoefficient * (_highPass + input - _previousInput);
@@ -69,6 +74,7 @@ public:
 private:
   static constexpr float kTwoPi = 6.2831853071795864769f;
   bool _enabled = false;
+  FixedPitchVoiceEffect _fixedPitch;
   float _highPassCoefficient = 0.f;
   float _lowPassCoefficient = 0.f;
   float _previousInput = 0.f;

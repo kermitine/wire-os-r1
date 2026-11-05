@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 using Anki::Vector::TextToSpeech::TacticalDroidVoiceEffect;
+using Anki::Vector::TextToSpeech::FixedPitchVoiceEffect;
 using Anki::Vector::TextToSpeech::WithNeutralSentenceEnding;
 using Anki::Vector::TextToSpeech::WithReducedWordEmphasis;
 using Samples = std::vector<short>;
@@ -150,6 +151,121 @@ void CheckSpeechBandAndMetallicSidebands()
           "Metallic modulation must produce sidebands while retaining the speech carrier");
 }
 
+Samples HarmonicVoice(int sampleRate, double pitch)
+{
+  Samples samples(sampleRate);
+  for (size_t i = 0; i < samples.size(); ++i) {
+    double value = 0.;
+    for (int harmonic = 1; harmonic <= 15; ++harmonic) {
+      value += std::sin(kTwoPi * pitch * harmonic * i / sampleRate) / harmonic;
+    }
+    samples[i] = static_cast<short>(std::round(9000. * value));
+  }
+  return samples;
+}
+
+void CheckFixedPitch()
+{
+  constexpr int sampleRate = 22050;
+  // Model a low syllable followed by a higher one, like the reported upspeak.
+  // Check both the vocoder and its actual downstream metallic processing.
+  for (const bool metallic : {false, true}) {
+    for (const double sourcePitch : {120., 210.}) {
+      auto samples = HarmonicVoice(sampleRate, sourcePitch);
+      if (metallic) {
+        TacticalDroidVoiceEffect effect;
+        effect.Reset(sampleRate, true, 85);
+        effect.Process(samples.data(), samples.size());
+      } else {
+        FixedPitchVoiceEffect effect;
+        effect.Reset(sampleRate, 85);
+        effect.Process(samples.data(), samples.size());
+      }
+      double carrier = 0.;
+      for (int harmonic = 1; harmonic <= 8; ++harmonic) {
+        carrier = std::max(carrier, SpectralMagnitude(samples, sampleRate, harmonic * 85.));
+      }
+      Require(Rms(samples) > 500., "Fixed-pitch speech must retain useful output level");
+      Require(SpectralMagnitude(samples, sampleRate, sourcePitch) < carrier * 0.05,
+              "Source pitch must be replaced, including after metallic processing");
+      // A different target must move the carrier; this is not a hard-coded EQ.
+      FixedPitchVoiceEffect otherTarget;
+      otherTarget.Reset(sampleRate, 100);
+      samples = HarmonicVoice(sampleRate, sourcePitch);
+      otherTarget.Process(samples.data(), samples.size());
+      Require(SpectralMagnitude(samples, sampleRate, 100.) >
+              SpectralMagnitude(samples, sampleRate, 85.) * 5.,
+              "Configured pitch must set the acoustic carrier frequency");
+    }
+  }
+}
+
+void CheckFixedPitchStreaming()
+{
+  const auto original = HarmonicVoice(22050, 173.);
+  TacticalDroidVoiceEffect effect;
+  effect.Reset(22050, true, 85);
+  auto whole = original;
+  effect.Process(whole.data(), whole.size());
+  for (const size_t chunkSize : {size_t(1), size_t(17), size_t(2048)}) {
+    effect.Reset(22050, true, 85);
+    auto chunked = original;
+    for (size_t i = 0; i < chunked.size(); i += chunkSize) {
+      effect.Process(chunked.data() + i, std::min(chunkSize, chunked.size() - i));
+    }
+    Require(chunked == whole, "Fixed-pitch output must be independent of synthesis chunk boundaries");
+  }
+  effect.Reset(48000, true, 100);
+  auto otherRate = Tone(48000, 300.);
+  effect.Process(otherRate.data(), otherRate.size());
+  effect.Reset(22050, true, 85);
+  auto restarted = original;
+  effect.Process(restarted.data(), restarted.size());
+  Require(restarted == whole, "Reset must clear vocoder envelopes and oscillators");
+  effect.Reset(22050, false, 85);
+  auto bypassed = original;
+  effect.Process(bypassed.data(), bypassed.size());
+  Require(bypassed == original, "Disabling the metallic effect must also bypass the vocoder exactly");
+
+  FixedPitchVoiceEffect vocoder;
+  for (const int pitch : {0, -1, 59, 141}) {
+    vocoder.Reset(22050, pitch);
+    bypassed = original;
+    vocoder.Process(bypassed.data(), bypassed.size());
+    Require(bypassed == original, "Absent or invalid robotic pitch must bypass the vocoder exactly");
+  }
+  for (const int rate : {0, 7999, 192001}) {
+    vocoder.Reset(rate, 85);
+    bypassed = original;
+    vocoder.Process(bypassed.data(), bypassed.size());
+    Require(bypassed == original, "Unsupported sample rate must bypass the vocoder exactly");
+  }
+  for (const int rate : {8000, 22050, 48000, 192000}) {
+    for (const int pitch : {60, 85, 140}) {
+      effect.Reset(rate, true, pitch);
+      Samples silence(rate, 0);
+      effect.Process(nullptr, 100);
+      effect.Process(silence.data(), 0);
+      effect.Process(silence.data(), silence.size());
+      Require(silence == Samples(rate, 0), "Fixed carrier must not generate speech from silence");
+      auto loud = Tone(rate, 233., 32767.);
+      for (size_t i = 0; i < loud.size(); i += 13) {
+        loud[i] = i % 2 ? -32768 : 32767;
+      }
+      effect.Process(loud.data(), loud.size());
+      for (const short sample : loud) {
+        Require(std::abs(static_cast<int>(sample)) <= 26870,
+                "Vocoder and metallic effect must retain PCM headroom");
+      }
+      effect.Process(silence.data(), silence.size());
+      for (size_t i = silence.size() / 2; i < silence.size(); ++i) {
+        Require(std::abs(static_cast<int>(silence[i])) <= 1,
+                "Carrier must decay when speech stops rather than drone through pauses");
+      }
+    }
+  }
+}
+
 void CheckWordStress()
 {
   Require(WithReducedWordEmphasis(WithNeutralSentenceEnding("quarter")) == "\\emph=0\\quarter.",
@@ -209,9 +325,11 @@ int main()
     CheckSilenceAndHeadroom();
     CheckChunkContinuityAndReset();
     CheckSpeechBandAndMetallicSidebands();
+    CheckFixedPitch();
+    CheckFixedPitchStreaming();
     CheckWordStress();
     CheckMinutePronunciationContext();
-    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, word stress, minute context\n";
+    std::cout << "PASS: bypass, silence, headroom, chunk continuity, reset, speech band, metallic sidebands, fixed pitch, vocoder streaming, word stress, minute context\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "FAIL: " << error.what() << '\n';

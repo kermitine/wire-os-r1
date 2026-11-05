@@ -47,6 +47,7 @@ public:
   bool GetNeutralSentenceEndings() const { return _tts_neutralSentenceEndings; }
   bool GetReduceWordEmphasis() const { return _tts_reduceWordEmphasis; }
   bool GetTacticalDroidEffect() const { return _tts_tacticalDroidEffect; }
+  int GetRoboticPitch_hz() const { return _tts_roboticPitch_hz; }
   int GetLeadingSilence_ms() const;
   int GetTrailingSilence_ms() const;
   int GetPausePunctuation_ms() const;
@@ -78,6 +79,7 @@ private:
   bool _tts_neutralSentenceEndings = false;
   bool _tts_reduceWordEmphasis = false;
   bool _tts_tacticalDroidEffect = false;
+  int _tts_roboticPitch_hz = 0;
   int _tts_pausepunctuation;
 
   // Configurable traits

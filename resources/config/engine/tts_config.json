@@ -74,8 +74,9 @@
       "pitchRangeMin_percent": 95,
       "pitchRangeMax_percent": 100,
       "neutralSentenceEndings": true,
-      "reduceWordEmphasis": true,
-      "tacticalDroidEffect": true
+      "reduceWordEmphasis": false,
+      "tacticalDroidEffect": true,
+      "roboticPitch_hz": 85
     },
     "fr":
     {
