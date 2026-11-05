@@ -343,8 +343,11 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
   void ProceduralFaceDrawer::DrawEye(const ProceduralFace& faceData, WhichEye whichEye, const Matrix_3x3f* W_facePtr,
                                      Vision::Image& faceImg, Rectangle<f32>& eyeBoundingBox)
   {
-    const s32 eyeWidth  = ProceduralFace::NominalEyeWidth;
-    const s32 eyeHeight = ProceduralFace::NominalEyeHeight;
+    const bool isHeptagon = kProcFace_EyeShape == static_cast<u8>(EyeShape::Heptagon);
+    // Give the heptagon a wider, shorter visor profile. Use the same dimensions
+    // for the lids and lighting so they continue to follow the eye outline.
+    const f32 eyeWidth  = ProceduralFace::NominalEyeWidth  * (isHeptagon ? 1.15f : 1.f);
+    const f32 eyeHeight = ProceduralFace::NominalEyeHeight * (isHeptagon ? 0.70f : 1.f);
     const f32 halfEyeWidth  = 0.5f*eyeWidth;
     const f32 halfEyeHeight = 0.5f*eyeHeight;
 
@@ -368,7 +371,7 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
     const s32 kLineType = kLineTypes[kProcFace_LineType];
 
     // 1. Eye shape poly
-    if(kProcFace_EyeShape == static_cast<u8>(EyeShape::Heptagon)) {
+    if(isHeptagon) {
       eyePoly.reserve(kHeptagonOutline.size());
       for(const auto& point : kHeptagonOutline) {
         eyePoly.emplace_back(ROUND(point.x * halfEyeWidth), ROUND(point.y * halfEyeHeight));

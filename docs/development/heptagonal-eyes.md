@@ -1,8 +1,10 @@
 # Heptagonal eyes
 
 This build uses a seven-sided procedural eye outline by default: a flat top,
-deeply clipped upper corners, vertical sides, and a pointed base. The outline
-keeps the original eye dimensions and spacing.
+deeply clipped upper corners, vertical sides, and a pointed base. The eyes are
+15% wider and 30% shorter than the original dimensions for a horizontal,
+visor-like profile, with the original eye centers and spacing. Eyelid geometry
+and lighting use the same dimensions as the outline.
 Existing eyelids, blinks, eye movement, transforms, lighting, and color overlays
 still use the normal rendering pipeline. Animated corner-radius values apply
 only to the original rounded style.
