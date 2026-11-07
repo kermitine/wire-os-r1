@@ -81,6 +81,8 @@ namespace Vector {
 
   private:
 
+    friend class ProceduralFaceOverlayTest;
+
     using Parameter = ProceduralEyeParameter;
     using WhichEye = ProceduralFace::WhichEye;
     using Value = ProceduralFace::Value;
@@ -109,6 +111,10 @@ namespace Vector {
       // pipeline
       static const int kSize = 4;
       Vision::Image img8[kSize];
+      // Track the eye that supplied each visible pixel before the eyes merge.
+      // Distortion moves these labels with the intensity image.
+      Vision::Image eyeOwner;
+      Vision::Image distortedEyeOwner;
       Vision::ImageRGB565 img565;
       int eyes;
       int distortedFace;

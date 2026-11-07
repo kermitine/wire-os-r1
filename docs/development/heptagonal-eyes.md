@@ -44,3 +44,39 @@ ProcFace_EyeShape = 1
 An older firmware build does not have this setting. Rocket-Pod's existing eye
 overlay controls change the color texture; the new outline requires this
 updated renderer.
+
+## Keeping heterochromia colors separate
+
+Custom overlays now keep their left and right color halves attached to the
+corresponding procedural eye. Previously the overlay stretched across the
+combined face bounds, so an exaggerated blink, uneven eye scaling, or crossed
+eyes could move one eye into the other half of the color texture.
+
+The renderer records which eye supplied each visible pixel before merging the
+eyes. Where the shapes overlap, the brighter source pixel retains its eye's
+color; ties keep the left eye, matching the existing draw order. Scanline
+distortion moves these labels with the eye pixels. Color and alpha sampling
+then stay within that eye's half of the overlay, including anti-aliased edges
+and clipped or off-screen shapes. This works with both rounded and heptagonal
+outlines and does not change the selected colors or overlay opacity.
+
+`Face.ParameterizedFace` exposes `ProcFace_LockEyeOverlayColors`, enabled by
+default. Leave it enabled for heterochromia overlays with one color in each
+image half. Set it to false for artwork intended to span freely across both
+eyes. The C++ console variable is `kProcFace_LockEyeOverlayColors`. To persist
+the setting, preserve the other entries in `consoleVarsAnim.ini` and add:
+
+```ini
+[Face.ParameterizedFace]
+ProcFace_LockEyeOverlayColors = true
+```
+
+Rebuild and deploy the animation process for this renderer change. On Vector,
+check wide blinks, strong sideways looks, head tilts, and uneven eye scaling
+with the existing heterochromia overlay enabled. An overlay with blended colors
+already present inside either source-image half will retain those pixels.
+
+`ProceduralFaceOverlayTest` in `test/animProcess/proceduralFaceTests.cpp` uses a
+synthetic blue/red overlay and separately rendered eye images to check wide
+blinks, unequal scaling, crossed eyes, and face rotation. Run it in the native
+animation test build with `--gtest_filter=ProceduralFaceOverlayTest.*`.

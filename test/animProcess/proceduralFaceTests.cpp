@@ -25,6 +25,8 @@ namespace Anki {
 namespace Vector {
   CONSOLE_VAR_EXTERN(u8, kProcFace_EyeShape)
   CONSOLE_VAR_EXTERN(s32, kProcFace_NoiseNumFrames)
+  CONSOLE_VAR_EXTERN(bool, kProcFace_CustomEyes)
+  CONSOLE_VAR_EXTERN(bool, kProcFace_LockEyeOverlayColors)
 }
 }
 
@@ -190,6 +192,143 @@ TEST_F(HeptagonalFaceTest, BlinkRestoresOriginalExpression)
   ProceduralFaceDrawer::DrawFace(face, rng, afterBlink);
   EXPECT_DOUBLE_EQ(ImageDifferenceFraction(beforeBlink, afterBlink), 0.0);
 }
+
+namespace Anki {
+namespace Vector {
+
+// Inject a two-color overlay without depending on files installed on a robot.
+class ProceduralFaceOverlayTest : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    _previousCustomEyes = kProcFace_CustomEyes;
+    _previousLock = kProcFace_LockEyeOverlayColors;
+    _previousNoise = kProcFace_NoiseNumFrames;
+    _previousShape = kProcFace_EyeShape;
+    kProcFace_CustomEyes = false;
+    kProcFace_NoiseNumFrames = 0;
+    kProcFace_EyeShape = 1;
+
+    // Complete the renderer's one-time overlay load before injecting test data.
+    Vision::ImageRGB565 initial;
+    Util::RandomGenerator rng(1);
+    ProceduralFaceDrawer::DrawFace(ProceduralFace(), rng, initial);
+    ProceduralFaceDrawer::_customEyeOverlay.CopyTo(_previousOverlay);
+    ProceduralFaceDrawer::_customEyeAlpha.CopyTo(_previousAlpha);
+    _previousHasCustomEyes = ProceduralFaceDrawer::_hasCustomEyes;
+
+    auto& overlay = ProceduralFaceDrawer::_customEyeOverlay;
+    overlay.Allocate(FACE_DISPLAY_HEIGHT, FACE_DISPLAY_WIDTH);
+    for(s32 y = 0; y < FACE_DISPLAY_HEIGHT; ++y) {
+      for(s32 x = 0; x < FACE_DISPLAY_WIDTH; ++x) {
+        overlay.GetRow(y)[x].SetValue(x < FACE_DISPLAY_WIDTH / 2 ? 0x001f : 0xf800);
+      }
+    }
+    ProceduralFaceDrawer::_customEyeAlpha.Allocate(FACE_DISPLAY_HEIGHT, FACE_DISPLAY_WIDTH);
+    ProceduralFaceDrawer::_customEyeAlpha.FillWith(255);
+    ProceduralFaceDrawer::_hasCustomEyes = true;
+    kProcFace_LockEyeOverlayColors = true;
+  }
+
+  void TearDown() override
+  {
+    // Assignment restores the previous buffers, including an empty overlay.
+    ProceduralFaceDrawer::_customEyeOverlay = _previousOverlay;
+    ProceduralFaceDrawer::_customEyeAlpha = _previousAlpha;
+    ProceduralFaceDrawer::_hasCustomEyes = _previousHasCustomEyes;
+    kProcFace_CustomEyes = _previousCustomEyes;
+    kProcFace_LockEyeOverlayColors = _previousLock;
+    kProcFace_NoiseNumFrames = _previousNoise;
+    kProcFace_EyeShape = _previousShape;
+  }
+
+  void CheckEyeColors(const ProceduralFace& face)
+  {
+    using Eye = ProceduralFace::WhichEye;
+    using Param = ProceduralFace::Parameter;
+    Util::RandomGenerator rng(1);
+    Vision::ImageRGB565 leftOnly, rightOnly, colored;
+    const auto render = [&](const ProceduralFace& data, Vision::ImageRGB565& image) {
+      // Force a redraw even when noise is disabled and the same face is reused.
+      ProceduralFaceDrawer::_faceCache.faceData.SetParameterBothEyes(Param::Lightness, -1.f);
+      ProceduralFaceDrawer::DrawFace(data, rng, image);
+    };
+
+    kProcFace_CustomEyes = false;
+    auto oneEye = face;
+    oneEye.SetParameter(Eye::Right, Param::Lightness, 0.f);
+    render(oneEye, leftOnly);
+    oneEye = face;
+    oneEye.SetParameter(Eye::Left, Param::Lightness, 0.f);
+    render(oneEye, rightOnly);
+    kProcFace_CustomEyes = true;
+    render(face, colored);
+
+    s32 checkedLeft = 0, checkedRight = 0;
+    for(s32 y = 0; y < FACE_DISPLAY_HEIGHT; ++y) {
+      for(s32 x = 0; x < FACE_DISPLAY_WIDTH; ++x) {
+        const auto left = leftOnly.GetRow(y)[x].ToPixelRGB();
+        const auto right = rightOnly.GetRow(y)[x].ToPixelRGB();
+        const auto result = colored.GetRow(y)[x].ToPixelRGB();
+        const u8 leftValue = left.max(), rightValue = right.max();
+        // Skip dim edges and ties where RGB565 quantization obscures the winner.
+        if(leftValue > 8 && leftValue > rightValue) {
+          EXPECT_EQ(result.r(), 0) << "Left-eye red leak at " << x << ',' << y;
+          EXPECT_EQ(result.g(), 0);
+          EXPECT_GT(result.b(), 0);
+          ++checkedLeft;
+        } else if(rightValue > 8 && rightValue > leftValue) {
+          EXPECT_GT(result.r(), 0);
+          EXPECT_EQ(result.g(), 0);
+          EXPECT_EQ(result.b(), 0) << "Right-eye blue leak at " << x << ',' << y;
+          ++checkedRight;
+        }
+      }
+    }
+    EXPECT_GT(checkedLeft, 0);
+    EXPECT_GT(checkedRight, 0);
+  }
+
+private:
+  Vision::ImageRGB565 _previousOverlay;
+  Vision::Image _previousAlpha;
+  bool _previousCustomEyes = false, _previousHasCustomEyes = false, _previousLock = true;
+  s32 _previousNoise = 0;
+  u8 _previousShape = 0;
+};
+
+TEST_F(ProceduralFaceOverlayTest, WideBlinkAndUnevenScalingKeepTheirOwnColors)
+{
+  for(const auto shape : {u8{0}, u8{1}}) {
+    kProcFace_EyeShape = shape;
+    ProceduralFace face;
+    face.SetParameterBothEyes(ProceduralFace::Parameter::EyeScaleX, 5.f);
+    face.SetParameterBothEyes(ProceduralFace::Parameter::EyeScaleY, 0.05f);
+    CheckEyeColors(face);
+
+    face = ProceduralFace();
+    face.SetParameter(ProceduralFace::Left, ProceduralFace::Parameter::EyeScaleX, 4.f);
+    face.SetParameter(ProceduralFace::Right, ProceduralFace::Parameter::EyeScaleX, 0.6f);
+    face.SetFacePosition({-15.f, 0.f});
+    CheckEyeColors(face);
+  }
+}
+
+TEST_F(ProceduralFaceOverlayTest, CrossedAndRotatedEyesKeepTheirOwnColors)
+{
+  ProceduralFace face;
+  face.SetParameter(ProceduralFace::Left, ProceduralFace::Parameter::EyeCenterX, 80.f);
+  face.SetParameter(ProceduralFace::Right, ProceduralFace::Parameter::EyeCenterX, -80.f);
+  CheckEyeColors(face);
+
+  face = ProceduralFace();
+  face.SetFaceAngle(65.f);
+  CheckEyeColors(face);
+}
+
+} // namespace Vector
+} // namespace Anki
 
 static void testFaceAgainstStoredVersion(const ProceduralFace& procFace, const std::string& filename)
 {

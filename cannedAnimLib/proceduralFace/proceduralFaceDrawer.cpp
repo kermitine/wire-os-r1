@@ -70,6 +70,7 @@ namespace Vector {
   CONSOLE_VAR_ENUM(uint8_t, kProcFace_AntiAliasingFilter,         CONSOLE_GROUP, (uint8_t)Filter::BoxFilter, "None,Box,Gaussian");
   CONSOLE_VAR_RANGED(f32,   kProcFace_AntiAliasingSigmaFraction,  CONSOLE_GROUP, IsXray() ? 0.3f : 0.5f, 0.0f, 1.0f);
   CONSOLE_VAR(bool, kProcFace_CustomEyes, CONSOLE_GROUP, false);
+  CONSOLE_VAR(bool, kProcFace_LockEyeOverlayColors, CONSOLE_GROUP, true);
   CONSOLE_VAR_RANGED(f32, kProcFace_CustomEyeOpacity, CONSOLE_GROUP, 0.8f, 0.f, 1.f);
   CONSOLE_VAR_ENUM(u8, kProcFace_FlavorOfGay, CONSOLE_GROUP, 0, "Lesbian,Gay,Bi,Trans,Pan,Frog,All,Galaxy,Custom");
   static void LOOK_LoadFaceOverlay(ConsoleFunctionContextRef context)
@@ -714,6 +715,7 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
         for(s32 i=upperLeft.y(); i<=bottomRight.y(); ++i) {
 
           u8* faceImg_i = faceImg.GetRow(i);
+          u8* ownerRow = _faceCache.eyeOwner.GetRow(i);
           const u8* eyeShape_i = _eyeShape.GetRow(i);
 #if PROCEDURALFACE_GLOW_FEATURE
           const u8* glowImg_i  = _glowImg.GetRow(i);
@@ -752,7 +754,11 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
               // Put the final value into the face image
               // Note: If we're drawing the right eye, there may already be something in the image
               //       from when we drew the left eye (e.g. with large glow), so use max
-              faceImg_i[j] = std::max(faceImg_i[j], NUMERIC_CAST_CLAMPED(ROUND(newValue)));
+              const u8 pixelValue = NUMERIC_CAST_CLAMPED(ROUND(newValue));
+              if(pixelValue > faceImg_i[j]) {
+                faceImg_i[j] = pixelValue;
+                ownerRow[j] = whichEye == WhichEye::Left ? 1 : 2;
+              }
             }
           }
         }
@@ -821,6 +827,8 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
       DEV_ASSERT(_faceCache.finalFace < _faceCache.kSize, "ProceduralFaceDrawer.DistortScanlines.FaceCacheTooSmall");
       _faceCache.img8[_faceCache.eyes].Allocate(ProceduralFace::HEIGHT, ProceduralFace::WIDTH); // Will do nothing if already the right size
       _faceCache.img8[_faceCache.eyes].FillWith(0);
+      _faceCache.eyeOwner.Allocate(ProceduralFace::HEIGHT, ProceduralFace::WIDTH);
+      _faceCache.eyeOwner.FillWith(0);
 
       // Create a full-face warp matrix if needed and provide it to the eye-rendering call
       const Matrix_3x3f* W_facePtr = nullptr;
@@ -891,30 +899,36 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
       DEV_ASSERT(_faceCache.finalFace < _faceCache.kSize, "ProceduralFaceDrawer, face cache too small.");
       _faceCache.img8[_faceCache.distortedFace].Allocate(ProceduralFace::HEIGHT, ProceduralFace::WIDTH);
       _faceCache.img8[_faceCache.distortedFace].FillWith(0);
+      _faceCache.distortedEyeOwner.Allocate(ProceduralFace::HEIGHT, ProceduralFace::WIDTH);
+      _faceCache.distortedEyeOwner.FillWith(0);
 
       s32 newColMin = _faceColMin;
       s32 newColMax = _faceColMax;
 
-      const f32 scale = 1.f / (_faceRowMax - _faceRowMin);
-      for(s32 row=_faceRowMin; row < _faceRowMax; ++row) {
+      const f32 scale = _faceRowMax > _faceRowMin ? 1.f / (_faceRowMax - _faceRowMin) : 0.f;
+      for(s32 row=_faceRowMin; row <= _faceRowMax; ++row) {
         const f32 eyeFrac = (row - _faceRowMin) * scale;
-        const s32 shift = scanlineDistorter->GetEyeDistortionAmount(eyeFrac) * sizeof(Vision::PixelRGB);
+        const s32 shift = Util::Clamp(scanlineDistorter->GetEyeDistortionAmount(eyeFrac) *
+                                      static_cast<s32>(sizeof(Vision::PixelRGB)),
+                                      -ProceduralFace::WIDTH, ProceduralFace::WIDTH);
+
+        // Copy intensity and eye identity using exactly the same shift, including
+        // unshifted rows. Clipping also handles distortions wider than the screen.
+        const s32 sourceCol = std::max(0, -shift);
+        const s32 destCol = std::max(0, shift);
+        const s32 count = ProceduralFace::WIDTH - std::abs(shift);
+        memcpy(_faceCache.img8[_faceCache.distortedFace].GetRow(row) + destCol,
+               _faceCache.img8[_faceCache.eyes].GetRow(row) + sourceCol, count);
+        memcpy(_faceCache.distortedEyeOwner.GetRow(row) + destCol,
+               _faceCache.eyeOwner.GetRow(row) + sourceCol, count);
 
         if(shift < 0) {
-          const u8* faceImg_row = _faceCache.img8[_faceCache.eyes].GetRow(row);
-          u8* img_row = _faceCache.img8[_faceCache.distortedFace].GetRow(row);
-          memcpy(img_row, faceImg_row-shift, ProceduralFace::WIDTH+shift);
-
           if(_faceColMin+shift < newColMin) {
             // shift left increases face bounding box, update new bounds,
             // but keep existing bounds for the rest of the effect
             newColMin = _faceColMin+shift;
           }
         } else if(shift > 0) {
-          const u8* faceImg_row = _faceCache.img8[_faceCache.eyes].GetRow(row);
-          u8* img_row = _faceCache.img8[_faceCache.distortedFace].GetRow(row);
-          memcpy(img_row+shift, faceImg_row, ProceduralFace::WIDTH-shift);
-
           if(_faceColMax+shift > newColMax) {
             // shift right increases face bounding box, update new bounds,
             // but keep existing bounds for the rest of the effect
@@ -923,8 +937,8 @@ void ProceduralFaceDrawer::LoadCustomEyePNG()
         }
       }
 
-      _faceColMin = newColMin;
-      _faceColMax = newColMax;
+      _faceColMin = Util::Clamp(newColMin, 0, ProceduralFace::WIDTH-1);
+      _faceColMax = Util::Clamp(newColMax, 0, ProceduralFace::WIDTH-1);
     } else {
       // No scanline distortion, pass forward the cached face transform as output
       _faceCache.finalFace = _faceCache.distortedFace = _faceCache.eyes;
@@ -1077,6 +1091,9 @@ bool ProceduralFaceDrawer::ApplyCustomOverlay(const ProceduralFace& faceData,
 
     auto dstROI  = output.GetROI(roiR);
     auto maskROI = _faceCache.img8[_faceCache.finalFace].GetROI(roiR);
+    const auto& owners = faceData.GetScanlineDistorter() != nullptr
+      ? _faceCache.distortedEyeOwner : _faceCache.eyeOwner;
+    auto ownerROI = owners.GetROI(roiR);
 
     int overlayW = _customEyeOverlay.GetNumCols();
     int overlayH = _customEyeOverlay.GetNumRows();
@@ -1086,12 +1103,25 @@ bool ProceduralFaceDrawer::ApplyCustomOverlay(const ProceduralFace& faceData,
     for(int y = 0; y < roiR.GetHeight(); ++y) {
       auto* dstRow  = dstROI .GetRow(y);
       auto* maskRow = maskROI.GetRow(y);
+      const auto* ownerRow = ownerROI.GetRow(y);
       int globalY    = yMin + y;
       int sampleY    = std::min(overlayH - 1, std::max(0, int((globalY - yMin0) * scaleY)));
       for(int x = 0; x < roiR.GetWidth(); ++x) {
         if(maskRow[x] == 0) continue;
         int globalX = xMin + x;
         int sampleX = std::min(overlayW - 1, std::max(0, int((globalX - xMin0) * scaleX)));
+        if(kProcFace_LockEyeOverlayColors && overlayW > 1) {
+          // The left/right colors belong to eye identity, not a moving boundary
+          // across the combined face bounds. A wide blink, crossed eyes, or one
+          // enlarged eye must never sample the other half of the overlay.
+          if(ownerRow[x] == 1) {
+            sampleX = std::min(sampleX, overlayW / 2 - 1);
+          } else if(ownerRow[x] == 2) {
+            sampleX = std::max(sampleX, overlayW / 2);
+          } else {
+            continue;
+          }
+        }
         u8 alpha = _customEyeAlpha.GetRow(sampleY)[sampleX];
         if(alpha == 0) continue;
 
