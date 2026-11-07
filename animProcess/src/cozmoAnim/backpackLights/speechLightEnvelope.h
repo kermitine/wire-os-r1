@@ -66,16 +66,18 @@ public:
   }
 
   // Center LED responds first; the other two fill in on stronger syllables.
+  // Quiet speech is white, blending through pink to red on louder syllables.
   // Colors use the robot's 0xRRGGBB00 format.
   static std::array<uint32_t, 3> Colors(float level)
   {
     const float thresholds[] = {0.25f, 0.f, 0.55f};
+    const float whiteMix = 1.f - std::max(0.f, std::min(1.f, (level - 0.25f) / 0.6f));
     std::array<uint32_t, 3> colors{};
     for (size_t i = 0; i < colors.size(); ++i) {
       const float brightness = std::max(0.f, std::min(1.f, (level - thresholds[i]) / 0.45f));
       const auto red = static_cast<uint32_t>(255.f * brightness);
-      const auto green = static_cast<uint32_t>(80.f * brightness);
-      colors[i] = (red << 24) | (green << 16);
+      const auto pale = static_cast<uint32_t>(255.f * brightness * whiteMix);
+      colors[i] = (red << 24) | (pale << 16) | (pale << 8);
     }
     return colors;
   }

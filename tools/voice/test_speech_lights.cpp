@@ -89,11 +89,16 @@ int main()
   Require(SpeechLightEnvelope::Colors(0.f) == std::array<uint32_t, 3>{}, "No speech turns all LEDs off");
   const auto quiet = SpeechLightEnvelope::Colors(0.2f);
   Require(quiet[0] == 0 && quiet[1] != 0 && quiet[2] == 0, "Center LED responds to quiet speech");
+  Require((quiet[1] >> 24) == ((quiet[1] >> 16) & 0xff) &&
+          (quiet[1] >> 24) == ((quiet[1] >> 8) & 0xff), "Quiet speech is white");
   const auto medium = SpeechLightEnvelope::Colors(0.5f);
   Require(medium[0] != 0 && medium[1] != 0 && medium[2] == 0, "Medium speech fills two LEDs");
+  Require((medium[1] >> 24) > ((medium[1] >> 16) & 0xff) &&
+          ((medium[1] >> 16) & 0xff) == ((medium[1] >> 8) & 0xff) &&
+          ((medium[1] >> 8) & 0xff) > 0, "Medium speech blends white into red through pink");
   const auto loud = SpeechLightEnvelope::Colors(1.f);
-  Require(loud[0] == 0xff500000 && loud[1] == loud[0] && loud[2] == loud[0],
-          "Loud speech fills the three amber LEDs in robot color format");
+  Require(loud[0] == 0xff000000 && loud[1] == loud[0] && loud[2] == loud[0],
+          "Loud speech fills the three red LEDs in robot color format");
 
   // The synthesis worker and animation thread share an envelope. Exercise that
   // path while data is still arriving, with playback always behind the producer.
@@ -142,5 +147,5 @@ int main()
   underrun.Update(2600);
   Require(underrun.IsPlaying() && underrun.GetLevel() == 0.5f, "Playback resumes with the same output delay");
 
-  std::cout << "PASS: playback synchronization, silence, syllable dynamics, pauses, sample rates, chunk boundaries, streaming, partial windows, amber meter, concurrent generation, speaker latency, buffered completion, underrun/resume\n";
+  std::cout << "PASS: playback synchronization, silence, syllable dynamics, pauses, sample rates, chunk boundaries, streaming, partial windows, white-to-red meter, concurrent generation, speaker latency, buffered completion, underrun/resume\n";
 }
