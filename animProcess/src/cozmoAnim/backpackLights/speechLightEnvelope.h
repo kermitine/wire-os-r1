@@ -66,12 +66,13 @@ public:
   }
 
   // Center LED responds first; the other two fill in on stronger syllables.
-  // Quiet speech is white, blending through pink to red on louder syllables.
+  // Ordinary speech stays white. Ease into pink and reserve red for strong peaks.
   // Colors use the robot's 0xRRGGBB00 format.
   static std::array<uint32_t, 3> Colors(float level)
   {
     const float thresholds[] = {0.25f, 0.f, 0.55f};
-    const float whiteMix = 1.f - std::max(0.f, std::min(1.f, (level - 0.25f) / 0.6f));
+    const float redMix = std::max(0.f, std::min(1.f, (level - 0.4f) / 0.55f));
+    const float whiteMix = 1.f - redMix * redMix;
     std::array<uint32_t, 3> colors{};
     for (size_t i = 0; i < colors.size(); ++i) {
       const float brightness = std::max(0.f, std::min(1.f, (level - thresholds[i]) / 0.45f));
@@ -85,10 +86,11 @@ public:
 private:
   static float Level(double sumSquares, uint32_t frames)
   {
-    // Suppress the noise floor, then bring ordinary speech into the useful LED
-    // range. Fast attack and a short release follow syllables without flicker.
+    // Keep the noise floor, but leave headroom above ordinary syllables: full
+    // scale now needs 0.45 RMS instead of 0.18. This avoids pinning speech to red.
+    // Fast attack and a short release still follow syllables without flicker.
     const float rms = static_cast<float>(std::sqrt(sumSquares / frames));
-    return std::max(0.f, std::min(1.f, (rms - 0.008f) / 0.172f));
+    return std::max(0.f, std::min(1.f, (rms - 0.008f) / 0.442f));
   }
 
   std::mutex _mutex;

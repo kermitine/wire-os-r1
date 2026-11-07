@@ -172,6 +172,12 @@ sounds use separate paths and do not inherit this preset. Native Rocket-Pod
 The three backpack LEDs now form a white-to-red speech meter. The center LED
 responds to quieter syllables in white; stronger syllables brighten and fill the
 other LEDs while the color blends through pink to red at high levels.
+The response leaves more headroom above ordinary speech: meter saturation is
+0.45 normalized PCM RMS, raised from 0.18. Color stays white through the lower
+40% of the meter, then follows a gentle quadratic blend toward red near 95%.
+This keeps normal syllables white or pale pink and reserves red for strong
+peaks. The noise floor and syllable timing stay the same; this changes the
+light response, not the audio volume.
 Pauses fade to darkness. Both native TTS (including immediate, manual, and
 animation-keyframe playback) and SDK-streamed audio such as external Rocket-Pod
 replies feed the meter. SDK playback also includes any non-speech audio sent
@@ -237,6 +243,7 @@ cl /nologo /std:c++14 /EHsc /W4 /IanimProcess/src `
 Checks cover prepared audio staying dark until playback, silence, quiet/loud
 syllables, pauses, five sample rates, arbitrary chunk boundaries, partial final
 windows, streaming, concurrent synthesis/playback access, the white-to-red meter,
+headroom above ordinary syllables, gradual color transitions,
 speaker-buffer delay, natural completion, and underrun/resumption. They verify
 signal and queue behavior; they do not measure the physical speaker/LED offset.
 
