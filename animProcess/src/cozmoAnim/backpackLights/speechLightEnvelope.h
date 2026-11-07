@@ -87,10 +87,10 @@ private:
   static float Level(double sumSquares, uint32_t frames)
   {
     // Keep the noise floor, but leave headroom above ordinary syllables: full
-    // scale now needs 0.45 RMS instead of 0.18. This avoids pinning speech to red.
+    // scale needs 0.41 RMS instead of 0.18. This avoids pinning speech to red.
     // Fast attack and a short release still follow syllables without flicker.
     const float rms = static_cast<float>(std::sqrt(sumSquares / frames));
-    return std::max(0.f, std::min(1.f, (rms - 0.008f) / 0.442f));
+    return std::max(0.f, std::min(1.f, (rms - 0.008f) / 0.402f));
   }
 
   std::mutex _mutex;

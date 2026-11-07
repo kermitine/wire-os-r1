@@ -173,7 +173,8 @@ The three backpack LEDs now form a white-to-red speech meter. The center LED
 responds to quieter syllables in white; stronger syllables brighten and fill the
 other LEDs while the color blends through pink to red at high levels.
 The response leaves more headroom above ordinary speech: meter saturation is
-0.45 normalized PCM RMS, raised from 0.18. Color stays white through the lower
+0.41 normalized PCM RMS, raised from 0.18. This is about 10% more sensitive than
+the previous 0.45 setting. Color stays white through the lower
 40% of the meter, then follows a gentle quadratic blend toward red near 95%.
 This keeps normal syllables white or pale pink and reserves red for strong
 peaks. The noise floor and syllable timing stay the same; this changes the

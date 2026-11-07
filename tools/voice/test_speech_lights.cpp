@@ -112,15 +112,16 @@ int main()
     return envelope.GetLevel(static_cast<uint32_t>(tone.size()));
   };
   const auto ordinary = SpeechLightEnvelope::Colors(levelAtRms(0.18f))[1];
-  Require((ordinary >> 24) > 0 && (ordinary >> 24) == ((ordinary >> 16) & 0xff) &&
-          (ordinary >> 24) == ((ordinary >> 8) & 0xff), "Formerly saturated syllables should now stay white");
+  Require((ordinary >> 24) > 0 && ((ordinary >> 16) & 0xff) >= (ordinary >> 24) * 95 / 100 &&
+          ((ordinary >> 16) & 0xff) == ((ordinary >> 8) & 0xff),
+          "Formerly saturated syllables should now stay white or pale pink");
   const auto strong = SpeechLightEnvelope::Colors(levelAtRms(0.32f))[1];
   Require((strong >> 24) > ((strong >> 16) & 0xff) &&
           ((strong >> 16) & 0xff) > (strong >> 24) / 2,
           "Strong syllables should ease into pink with headroom before red");
   Require(SpeechLightEnvelope::Colors(levelAtRms(0.46f)) == loud, "Strong peaks must still reach red");
   float previousLevel = 0.f;
-  for (const float rms : {0.04f, 0.08f, 0.16f, 0.24f, 0.32f, 0.42f, 0.46f}) {
+  for (const float rms : {0.04f, 0.08f, 0.16f, 0.24f, 0.32f, 0.38f, 0.42f}) {
     const float level = levelAtRms(rms);
     Require(level > previousLevel, "Meter must retain dynamics across quiet, ordinary, and strong speech");
     previousLevel = level;
