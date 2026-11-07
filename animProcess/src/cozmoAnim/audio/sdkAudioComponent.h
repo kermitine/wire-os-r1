@@ -21,6 +21,8 @@ namespace Anki {
   namespace Vector {
     namespace Anim {
       class AnimContext;
+      class BackpackLightComponent;
+      class SpeechLightEnvelope;
     }
     namespace Audio {
       class CozmoAudioController;
@@ -67,6 +69,8 @@ private:
   // -------------------------------------------------------------------------------------------------------------------
 
   AudioController * _audioController = nullptr;
+  Anim::BackpackLightComponent* _backpackLights = nullptr;
+  std::shared_ptr<Anim::SpeechLightEnvelope> _speechEnvelope;
   StreamingWaveDataPtr _waveData = nullptr;
   uint16_t  _audioRate;
   uint32_t  _totalAudioFramesReceived;
@@ -86,7 +90,7 @@ private:
   void StopActiveAudio();
   void ClearActiveAudio();
   void CleanupAudioEngine();    
-  void ClearOperationData();
+  void ClearOperationData(bool drainSpeechLights = false);
   bool SetPlayerVolume(float volume) const;
   bool SendAnimToEngine(SDKAudioStreamingState audioState, uint32_t audioSent=0, uint32_t audioPlayed=0);
 };

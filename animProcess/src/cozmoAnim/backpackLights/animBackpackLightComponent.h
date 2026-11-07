@@ -18,6 +18,7 @@
 #include "cozmoAnim/backpackLights/backpackLightAnimationContainer.h"
 #include "cozmoAnim/backpackLights/animBackpackLightAnimation.h"
 #include "cozmoAnim/backpackLights/animBackpackLightComponentTypes.h"
+#include "cozmoAnim/backpackLights/speechLightEnvelope.h"
 #include "cozmoAnim/animContext.h"
 
 #include "json/json.h"
@@ -35,6 +36,9 @@
 #include <atomic>
 
 namespace Anki {
+namespace AudioEngine {
+  class StreamingWaveDataInstance;
+}
 namespace Vector {
   
 class Robot;
@@ -76,6 +80,13 @@ public:
   // Update battery status as we need to know when to play charging/low battery lights
   // Priority of battery related lights Low Battery > Charging > Fully Charged (Off)
   void UpdateBatteryStatus(const RobotInterface::BatteryStatus& msg);
+
+  // Main-thread registration. Preparation alone does not turn on the lights;
+  // they follow the stream's playback cursor until completion or cancellation.
+  void StartSpeechLights(const std::shared_ptr<AudioEngine::StreamingWaveDataInstance>& waveData,
+                         const std::shared_ptr<SpeechLightEnvelope>& envelope);
+  // Drain on normal completion; cancellation/error stops immediately.
+  void StopSpeechLights(const std::shared_ptr<SpeechLightEnvelope>& envelope, bool drain = false);
   
 private:
 
@@ -111,6 +122,20 @@ private:
 
   // is there a current request for a light that's associated with an active behavior?
   bool IsBehaviorBackpackLightActive() const;
+
+  bool UpdateSpeechLights();
+  uint32_t GetSpeechLightLatency_ms() const;
+
+  struct SpeechLightStream {
+    std::weak_ptr<AudioEngine::StreamingWaveDataInstance> waveData;
+    std::weak_ptr<SpeechLightEnvelope> envelope;
+    uint32_t lastFramesPlayed = 0;
+    SpeechLightPlayback playback{};
+    bool finishing = false;
+  };
+  std::list<SpeechLightStream> _speechLightStreams;
+  std::array<uint32_t, 3> _speechColors{};
+  bool _speechLightsShowing = false;
 
   
   /// member variables ...

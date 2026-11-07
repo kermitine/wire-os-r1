@@ -30,6 +30,8 @@ namespace Anki {
   namespace Vector {
     namespace Anim {
       class AnimContext;
+      class BackpackLightComponent;
+      class SpeechLightEnvelope;
     }
     namespace Audio {
       class CozmoAudioController;
@@ -98,6 +100,7 @@ private:
   // -------------------------------------------------------------------------------------------------------------------
   using AudioController = Vector::Audio::CozmoAudioController;
   using StreamingWaveDataPtr = std::shared_ptr<AudioEngine::StreamingWaveDataInstance>;
+  using SpeechLightEnvelopePtr = std::shared_ptr<Anim::SpeechLightEnvelope>;
   using AudioTtsProcessingStyle = AudioMetaData::SwitchState::Robot_Vic_External_Processing;
   using TextToSpeechProvider = TextToSpeech::TextToSpeechProvider;
   using DispatchQueue = Util::Dispatch::Queue;
@@ -120,6 +123,7 @@ private:
     AudioCreationState state = AudioCreationState::None;
     AudioTtsProcessingStyle style = AudioTtsProcessingStyle::Unprocessed;
     StreamingWaveDataPtr waveData;
+    SpeechLightEnvelopePtr speechEnvelope;
   };
 
   // Shared pointer to data bundle
@@ -140,6 +144,7 @@ private:
 
   // Audio controller provided by context
   AudioController * _audioController = nullptr;
+  Anim::BackpackLightComponent* _backpackLights = nullptr;
 
   // Worker thread
   DispatchQueue * _dispatchQueue = nullptr;
@@ -166,12 +171,14 @@ private:
                            float durationScalar,
                            float pitchScalar,
                            const StreamingWaveDataPtr & data,
+                           const SpeechLightEnvelopePtr & envelope,
                            bool & done);
 
   // Get next chunk of TTS audio.
   // Returns RESULT_OK on success, else error code.
   // Sets done to true when audio generation is complete.
-  Result GetNextAudioData(const StreamingWaveDataPtr & data, bool & done);
+  Result GetNextAudioData(const StreamingWaveDataPtr & data,
+                          const SpeechLightEnvelopePtr & envelope, bool & done);
 
   // Get bundle for given ID
   // Returns nullptr if ID is not found
@@ -196,7 +203,7 @@ private:
   void CleanupAudioEngine(const TTSID_t ttsID);
 
   // Clear speech operation audio data from memory
-  void ClearOperationData(const TTSID_t ttsID);
+  void ClearOperationData(const TTSID_t ttsID, bool drainSpeechLights = false);
 
   // Clear ALL loaded text audio data from memory
   void ClearAllLoadedAudioData();

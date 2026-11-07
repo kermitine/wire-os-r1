@@ -21,6 +21,7 @@
 
 #include "audioEngine/plugins/wavePortalFxTypes.h"
 
+#include <atomic>
 #include <mutex>
 #include <queue>
 
@@ -73,7 +74,7 @@ public:
   //       Example: A single channel stream frame consist of 1 sample, a two channel stream frame is 2 samples
   uint32_t GetNumberOfFramesReceived() const { return _numberOfFramesReceived; }
 
-  uint32_t GetNumberOfFramesPlayed() const { return _numberOfFramesPlayed; }
+  uint32_t GetNumberOfFramesPlayed() const { return _numberOfFramesPlayed.load(std::memory_order_relaxed); }
 
   // Amount Time received
   float GetApproximateTimeReceived_sec() const { return (_numberOfFramesReceived / static_cast<float>(_sampleRate)); }
@@ -95,7 +96,8 @@ private:
   uint32_t _sampleRate       = 0;
   // Total frame count added to streaming queue
   uint32_t _numberOfFramesReceived  = 0;
-  uint32_t _numberOfFramesPlayed    = 0;
+  // Written by the audio thread; read by streaming clients and speech lights.
+  std::atomic<uint32_t> _numberOfFramesPlayed{0};
   // Run state
   bool        _isReceivingData  = true;
   bool        _isPlayingData    = false;

@@ -167,6 +167,78 @@ Externally generated speech streamed by Rocket-Pod and prerecorded character
 sounds use separate paths and do not inherit this preset. Native Rocket-Pod
 `SayText` requests do inherit it.
 
+## Speech-synchronized backpack lights
+
+The three backpack LEDs now form an amber speech meter. The center LED responds
+to quieter syllables; stronger syllables brighten and fill the other LEDs.
+Pauses fade to darkness. Both native TTS (including immediate, manual, and
+animation-keyframe playback) and SDK-streamed audio such as external Rocket-Pod
+replies feed the meter. SDK playback also includes any non-speech audio sent
+through that channel. Prerecorded animation sounds and Alexa's separate media
+player do not feed it.
+
+The meter analyzes the mono waveform after the native voice effect, using
+10 ms RMS windows with a noise floor and a short release. It selects the
+envelope using the streaming player's consumed-frame counter, rather than
+text length, synthesis progress, or a timer started when speech is requested.
+The counter is atomic because the audio thread writes it while the animation
+thread reads it. Synthesis and playback share a protected envelope; consumed
+windows are discarded so long SDK streams do not accumulate old levels.
+
+The animation thread delays those levels by the speaker-buffer latency reported
+by the ALSA sink. Normal completion drains the delayed light changes alongside
+the buffered speaker tail. Cancellation and errors discard them immediately.
+An underrun releases the last light level after 100 ms without new output;
+resumed audio follows the same playback clock. Updates use the animation tick,
+so the visible resolution is about 30 ms. The reported speaker latency is a
+maximum buffering estimate, so precise perceived alignment still needs a check
+on Vector.
+
+Speech temporarily replaces ordinary behavior and charging lights, then
+restores the selected pattern. Streaming, mute, low-battery, offline, pairing,
+and self-test indications retain priority. The separate system LED keeps its
+existing behavior.
+
+The animation console's `Backpacklights` group provides:
+
+- `kSpeechBackpackLights`: enabled by default; false restores ordinary lights.
+- `kSpeechLightLatencyOverride_ms`: -1 uses the reported speaker latency;
+  0 through 500 supplies an explicit delay for visual tuning. Increase it if
+  lights lead the audible syllables; decrease it if they lag. Set the override
+  before starting the next utterance.
+
+Rebuild and deploy the animation binary and audio library together, then restart
+the animation process. This feature cannot be deployed through resources alone.
+On Vector, check short and long phrases, a reply with pauses, cancellation
+mid-sentence, streamed replies, charging restoration, and status-light priority.
+
+A standalone test checks envelope timing and the output-delay queue without the
+robot SDK. On Linux or macOS:
+
+```sh
+mkdir -p _build/speech-lights-check
+c++ -std=c++14 -O2 -Wall -Wextra -pedantic -pthread -IanimProcess/src \
+  tools/voice/test_speech_lights.cpp \
+  -o _build/speech-lights-check/test_speech_lights
+_build/speech-lights-check/test_speech_lights
+```
+
+Or in a Visual Studio Developer PowerShell prompt:
+
+```powershell
+New-Item -ItemType Directory -Force _build/speech-lights-check | Out-Null
+cl /nologo /std:c++14 /EHsc /W4 /IanimProcess/src `
+  tools/voice/test_speech_lights.cpp `
+  /Fo_build/speech-lights-check/ /Fe_build/speech-lights-check/test_speech_lights.exe
+& _build/speech-lights-check/test_speech_lights.exe
+```
+
+Checks cover prepared audio staying dark until playback, silence, quiet/loud
+syllables, pauses, five sample rates, arbitrary chunk boundaries, partial final
+windows, streaming, concurrent synthesis/playback access, the amber meter,
+speaker-buffer delay, natural completion, and underrun/resumption. They verify
+signal and queue behavior; they do not measure the physical speaker/LED offset.
+
 ## Build, verify, and tune
 
 Rebuild and deploy the animation binary and updated resources, then restart

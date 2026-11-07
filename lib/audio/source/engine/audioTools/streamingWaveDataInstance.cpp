@@ -186,7 +186,7 @@ size_t StreamingWaveDataInstance::WriteContinuousData( AkAudioBuffer* inOut_buff
   memcpy( destination, source, sizeof(AkSampleType) * frameCount );
 
   _playheadIdx += frameCount;
-  _numberOfFramesPlayed += frameCount;
+  _numberOfFramesPlayed.fetch_add(static_cast<uint32_t>(frameCount), std::memory_order_relaxed);
 #endif
 
   return frameCount;

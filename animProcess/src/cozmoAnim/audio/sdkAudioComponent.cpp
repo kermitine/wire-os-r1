@@ -21,6 +21,7 @@
 #include "cozmoAnim/animProcessMessages.h"
 #include "cozmoAnim/audio/cozmoAudioController.h"
 #include "cozmoAnim/animContext.h"
+#include "cozmoAnim/backpackLights/animBackpackLightComponent.h"
 
 #include "util/logging/logging.h"
 
@@ -49,6 +50,7 @@ SdkAudioComponent::SdkAudioComponent(const Anim::AnimContext* context) {
   DEV_ASSERT(nullptr != context->GetAudioController(), "SdkAudioComponent.InvalidAudioController");
 
   _audioController = context->GetAudioController();
+  _backpackLights = context->GetBackpackLightComponent();
   _audioPrepared = false;
   _audioPosted = false;
   _audioPlaybackFinishedPtr = std::make_shared<AudioCallbackType>([this](){
@@ -185,6 +187,8 @@ bool SdkAudioComponent::PrepareAudioEngine(const RobotInterface::ExternalAudioPr
   }
 
   _audioRate = msg.audio_rate;
+  _speechEnvelope = std::make_shared<Anim::SpeechLightEnvelope>();
+  _backpackLights->StartSpeechLights(_waveData, _speechEnvelope);
   _totalAudioFramesReceived = 0;
   _audioPrepared = true;
 
@@ -214,6 +218,7 @@ bool SdkAudioComponent::AddAudioChunk(const RobotInterface::ExternalAudioChunk& 
   const uint16_t wave_data_size = input_chunk_size / 2;  //size is in bytes, but buffer samples are 16 bit
   Anki::AudioEngine::StandardWaveDataContainer waveContainer(_audioRate, 1, wave_data_size); 
   waveContainer.CopyLittleEndianWaveData( (const unsigned char*)msg.audio_chunk_data, wave_data_size );
+  _speechEnvelope->Append(waveContainer.audioBuffer, wave_data_size, _audioRate);
   const bool result = _waveData->AppendStandardWaveData( std::move(waveContainer ));
 
   if (!result) {
@@ -277,9 +282,11 @@ void SdkAudioComponent::CleanupAudioEngine()
 //
 // Tells wave output we are done making data
 //
-void SdkAudioComponent::ClearOperationData()
+void SdkAudioComponent::ClearOperationData(bool drainSpeechLights)
 {
   LOG_DEBUG("SdkAudioComponent.ClearOperationData", "Clear Sdk Audio");
+  _backpackLights->StopSpeechLights(_speechEnvelope, drainSpeechLights);
+  _speechEnvelope.reset();
   if (_waveData && _waveData->IsPlayingStream()) {
     //no more data coming
     _waveData->DoneProducingData();
@@ -319,7 +326,7 @@ void SdkAudioComponent::ClearActiveAudio()
 void SdkAudioComponent::OnAudioCompleted()
 {
   LOG_DEBUG("SdkAudioComponent.OnAudioCompleted", "AudioStreaming completion callback received");
-  ClearOperationData(); // Cleanup operation's memory
+  ClearOperationData(true); // Keep lights in sync with the buffered speaker tail.
   SendAnimToEngine(SDKAudioStreamingState::Completed, 0, 0);
 }
 

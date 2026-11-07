@@ -17,6 +17,7 @@
 #include "cozmoAnim/animContext.h"
 #include "cozmoAnim/animProcessMessages.h"
 #include "cozmoAnim/audio/cozmoAudioController.h"
+#include "cozmoAnim/backpackLights/animBackpackLightComponent.h"
 #include "cozmoAnim/robotDataLoader.h"
 
 #include "clad/robotInterface/messageRobotToEngine.h"
@@ -68,6 +69,7 @@ TextToSpeechComponent::TextToSpeechComponent(const Anim::AnimContext* context)
   DEV_ASSERT(nullptr != context->GetAudioController(), "TextToSpeechComponent.InvalidAudioController");
 
   _audioController  = context->GetAudioController();
+  _backpackLights = context->GetBackpackLightComponent();
 
   const Json::Value& tts_config = context->GetDataLoader()->GetTextToSpeechConfig();
   _pvdr = std::make_unique<TextToSpeech::TextToSpeechProvider>(context, tts_config);
@@ -154,6 +156,7 @@ Result TextToSpeechComponent::CreateSpeech(const TTSID_t ttsID,
 
   // Get an empty data instance
   auto waveData = AudioEngine::PlugIns::StreamingWavePortalPlugIn::CreateDataInstance();
+  auto speechEnvelope = std::make_shared<Anim::SpeechLightEnvelope>();
 
   {
     std::lock_guard<std::mutex> lock(_lock);
@@ -169,10 +172,11 @@ Result TextToSpeechComponent::CreateSpeech(const TTSID_t ttsID,
     bundle->triggerMode = triggerMode;
     bundle->style = style;
     bundle->waveData = waveData;
+    bundle->speechEnvelope = speechEnvelope;
   }
 
   // Dispatch work onto another thread
-  Util::Dispatch::Async(_dispatchQueue, [this, ttsID, ttsStr, durationScalar, pitchScalar, waveData]
+  Util::Dispatch::Async(_dispatchQueue, [this, ttsID, ttsStr, durationScalar, pitchScalar, waveData, speechEnvelope]
   {
 
     // Have we sent TextToSpeechState::Playable for this utterance?
@@ -181,7 +185,7 @@ Result TextToSpeechComponent::CreateSpeech(const TTSID_t ttsID,
     // Have we finished generating audio for this utterance?
     bool done = false;
 
-    Result result = GetFirstAudioData(ttsStr, durationScalar, pitchScalar, waveData, done);
+    Result result = GetFirstAudioData(ttsStr, durationScalar, pitchScalar, waveData, speechEnvelope, done);
     if (RESULT_OK != result) {
       LOG_ERROR("TextToSpeechComponent.CreateSpeech", "Unable to get first audio data (error %d)", result);
       PushEvent({ttsID, TextToSpeechState::Invalid, 0.f});
@@ -204,7 +208,7 @@ Result TextToSpeechComponent::CreateSpeech(const TTSID_t ttsID,
     }
 
     while (result == RESULT_OK && !done) {
-      result = GetNextAudioData(waveData, done);
+      result = GetNextAudioData(waveData, speechEnvelope, done);
       if (RESULT_OK != result) {
         LOG_ERROR("TextToSpeechComponent.CreateSpeech", "Unable to get next audio data (error %d)", result);
         PushEvent({ttsID, TextToSpeechState::Invalid, 0.f});
@@ -300,6 +304,8 @@ bool TextToSpeechComponent::PrepareAudioEngine(const TTSID_t ttsID,
   SetAudioProcessingStyle(ttsBundle->style);
 
   _activeTTSID = ttsID;
+  _backpackLights->StopSpeechLights(ttsBundle->speechEnvelope);
+  _backpackLights->StartSpeechLights(waveData, ttsBundle->speechEnvelope);
 
   return true;
 } // PrepareAudioEngine()
@@ -321,7 +327,7 @@ void TextToSpeechComponent::CleanupAudioEngine(const TTSID_t ttsID)
 } // CleanupAudioEngine()
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TextToSpeechComponent::ClearOperationData(const TTSID_t ttsID)
+void TextToSpeechComponent::ClearOperationData(const TTSID_t ttsID, bool drainSpeechLights)
 {
   LOG_INFO("TextToSpeechComponent.ClearOperationData", "Clear ttsID %u", ttsID);
 
@@ -329,6 +335,7 @@ void TextToSpeechComponent::ClearOperationData(const TTSID_t ttsID)
   const auto it = _bundleMap.find(ttsID);
   if (it != _bundleMap.end()) {
     const auto & bundle = it->second;
+    _backpackLights->StopSpeechLights(bundle->speechEnvelope, drainSpeechLights);
     const auto & waveData = bundle->waveData;
     if (waveData && waveData->IsPlayingStream()) {
       waveData->DoneProducingData();
@@ -343,10 +350,14 @@ void TextToSpeechComponent::ClearAllLoadedAudioData()
   LOG_INFO("TextToSpeechComponent.ClearAllLoadedAudioData", "Clear all data");
 
   std::lock_guard<std::mutex> lock(_lock);
+  for (const auto& entry : _bundleMap) {
+    _backpackLights->StopSpeechLights(entry.second->speechEnvelope);
+  }
   _bundleMap.clear();
 } // ClearAllLoadedAudioData()
 
 static void AppendAudioData(const std::shared_ptr<AudioEngine::StreamingWaveDataInstance> & waveData,
+                            const std::shared_ptr<Anim::SpeechLightEnvelope>& envelope,
                             const TextToSpeech::TextToSpeechProviderData & ttsData,
                             bool done)
 {
@@ -380,6 +391,12 @@ static void AppendAudioData(const std::shared_ptr<AudioEngine::StreamingWaveData
     StandardWaveDataContainer waveContainer(sample_rate, num_channels, num_samples);
     waveContainer.CopyWaveData(samples, num_samples);
 
+    // The provider has already applied the voice effects. Analyze that same PCM
+    // before publishing it to the audio thread.
+    if (num_channels == 1) {
+      envelope->Append(waveContainer.audioBuffer, num_samples, sample_rate);
+    }
+
     waveData->AppendStandardWaveData(std::move(waveContainer));
   }
   if (done) {
@@ -393,6 +410,7 @@ Result TextToSpeechComponent::GetFirstAudioData(const std::string & text,
                                                 float durationScalar,
                                                 float pitchScalar,
                                                 const StreamingWaveDataPtr & data,
+                                                const SpeechLightEnvelopePtr & envelope,
                                                 bool & done)
 {
   TextToSpeech::TextToSpeechProviderData ttsData;
@@ -403,12 +421,13 @@ Result TextToSpeechComponent::GetFirstAudioData(const std::string & text,
     return result;
   }
 
-  AppendAudioData(data, ttsData, done);
+  AppendAudioData(data, envelope, ttsData, done);
 
   return RESULT_OK;
 } // GetFirstAudioData()
 
-Result TextToSpeechComponent::GetNextAudioData(const StreamingWaveDataPtr & data, bool & done)
+Result TextToSpeechComponent::GetNextAudioData(const StreamingWaveDataPtr & data,
+                                             const SpeechLightEnvelopePtr & envelope, bool & done)
 {
   TextToSpeech::TextToSpeechProviderData ttsData;
   const Result result = _pvdr->GetNextAudioData(ttsData, done);
@@ -418,7 +437,7 @@ Result TextToSpeechComponent::GetNextAudioData(const StreamingWaveDataPtr & data
     return result;
   }
 
-  AppendAudioData(data, ttsData, done);
+  AppendAudioData(data, envelope, ttsData, done);
 
   return RESULT_OK;
 }
@@ -526,7 +545,7 @@ void TextToSpeechComponent::OnUtteranceCompleted(uint8_t ttsID)
 
   LOG_DEBUG("TextToSpeechComponent.UtteranceCompleted", "Completion callback received for ttsID %hhu", ttsID);
   SendAnimToEngine(ttsID, TextToSpeechState::Finished);
-  ClearOperationData(ttsID); // Cleanup operation's memory
+  ClearOperationData(ttsID, true); // Let the lights follow the buffered speaker tail.
 }
 
 //
@@ -815,7 +834,7 @@ void TextToSpeechComponent::OnAudioComplete(const TTSID_t ttsID)
 
   // Notify engine that TTS is complete
   SendAnimToEngine(ttsID, TextToSpeechState::Finished);
-  ClearOperationData(ttsID);
+  ClearOperationData(ttsID, true);
 
 }
 

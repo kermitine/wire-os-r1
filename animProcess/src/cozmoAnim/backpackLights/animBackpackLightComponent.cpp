@@ -12,6 +12,7 @@
  **/
 
 #include "cozmoAnim/backpackLights/animBackpackLightComponent.h"
+#include "audioEngine/audioTools/streamingWaveDataInstance.h"
 
 #include "coretech/common/engine/utils/data/dataPlatform.h"
 #include "coretech/common/engine/utils/timer.h"
@@ -34,6 +35,9 @@ namespace Anim {
 
 CONSOLE_VAR(u32, kOfflineTimeBeforeLights_ms, "Backpacklights", (1000*60*2));
 CONSOLE_VAR(u32, kOfflineCheckFreq_ms,        "Backpacklights", 5000);
+CONSOLE_VAR(bool, kSpeechBackpackLights,     "Backpacklights", true);
+// -1 uses the robot's reported speaker-buffer latency. Override for visual tuning.
+CONSOLE_VAR_RANGED(s32, kSpeechLightLatencyOverride_ms, "Backpacklights", -1, -1, 500);
   
 enum class BackpackLightSourcePrivate : BackpackLightSourceType
 {
@@ -193,6 +197,12 @@ void BackpackLightComponent::Update()
   UpdateCriticalBackpackLightConfig(isCloudStreamOpen, _micMuted, _hasNotification);
 
   UpdateSystemLightState(isCloudStreamOpen);
+
+  const bool restoreAfterSpeech = _speechLightsShowing;
+  if (UpdateSpeechLights()) {
+    return;
+  }
+  _speechLightsShowing = false;
   
   BackpackLightDataRefWeak bestNewConfig = GetBestLightConfig();
   
@@ -204,7 +214,7 @@ void BackpackLightComponent::Update()
   static bool sBothConfigsWereNull = false;
 
   // If the best config at this time is different from what we had, change it
-  if (newConfig != curConfig)
+  if (newConfig != curConfig || restoreAfterSpeech)
   {
     sBothConfigsWereNull = false;
     // If the best config is still a thing, use it. Otherwise use the off config
@@ -240,6 +250,100 @@ void BackpackLightComponent::Update()
     sBothConfigsWereNull = true;
     SendBackpackLights(BackpackAnimationTrigger::Off);
   }
+}
+
+void BackpackLightComponent::StartSpeechLights(
+  const std::shared_ptr<AudioEngine::StreamingWaveDataInstance>& waveData,
+  const std::shared_ptr<SpeechLightEnvelope>& envelope)
+{
+  _speechLightStreams.push_back({waveData, envelope});
+}
+
+void BackpackLightComponent::StopSpeechLights(const std::shared_ptr<SpeechLightEnvelope>& envelope, bool drain)
+{
+  if (!envelope) {
+    return;
+  }
+  for (auto it = _speechLightStreams.begin(); it != _speechLightStreams.end();) {
+    if (it->envelope.lock() == envelope) {
+      if (drain && !it->finishing) {
+        it->playback.Finish(BaseStationTimer::getInstance()->GetCurrentTimeStamp(), GetSpeechLightLatency_ms());
+        it->finishing = true;
+      } else if (!drain) {
+        it = _speechLightStreams.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+}
+
+uint32_t BackpackLightComponent::GetSpeechLightLatency_ms() const
+{
+  return kSpeechLightLatencyOverride_ms >= 0
+    ? static_cast<uint32_t>(kSpeechLightLatencyOverride_ms)
+    : _context->GetMicDataSystem()->GetSpeakerLatency_ms();
+}
+
+bool BackpackLightComponent::UpdateSpeechLights()
+{
+  const TimeStamp_t now_ms = BaseStationTimer::getInstance()->GetCurrentTimeStamp();
+  const uint32_t latency_ms = GetSpeechLightLatency_ms();
+  bool playing = false;
+  float level = 0.f;
+  for (auto it = _speechLightStreams.begin(); it != _speechLightStreams.end();) {
+    const auto waveData = it->waveData.lock();
+    const auto envelope = it->envelope.lock();
+    if (!it->finishing && (!waveData || !envelope)) {
+      it = _speechLightStreams.erase(it);
+      continue;
+    }
+    if (!it->finishing) {
+      const auto framesPlayed = waveData->GetNumberOfFramesPlayed();
+      // Always consume the envelope, including when a status light has priority.
+      const float streamLevel = envelope->GetLevel(framesPlayed);
+      if (framesPlayed != it->lastFramesPlayed) {
+        it->lastFramesPlayed = framesPlayed;
+        it->playback.Push(streamLevel, now_ms, latency_ms);
+      }
+    }
+    it->playback.Update(now_ms);
+    if (it->playback.IsDone()) {
+      it = _speechLightStreams.erase(it);
+      continue;
+    }
+    if (it->playback.IsPlaying()) {
+      playing = true;
+      level = std::max(level, it->playback.GetLevel());
+    }
+    ++it;
+  }
+
+  // Speech may temporarily replace charging/behavior lights. Status indicators
+  // for streaming, mute, low battery, offline, pairing and self-test still win.
+  const bool statusAllowsSpeech =
+    _internalCriticalLightsTrigger == BackpackAnimationTrigger::Off ||
+    _internalCriticalLightsTrigger == BackpackAnimationTrigger::Charging ||
+    _internalCriticalLightsTrigger == BackpackAnimationTrigger::AlexaNotification;
+  if (!kSpeechBackpackLights || !playing || !statusAllowsSpeech || _selfTestRunning ||
+      _systemLightState == SystemLightState::Pairing) {
+    return false;
+  }
+
+  const auto colors = SpeechLightEnvelope::Colors(level);
+  if (!_speechLightsShowing || colors != _speechColors) {
+    BackpackLightAnimation::BackpackAnimation animation{};
+    for (size_t i = 0; i < colors.size(); ++i) {
+      auto& light = animation.lights.lights[i];
+      light.onColor = colors[i];
+      light.offColor = colors[i];
+      light.onPeriod_ms = 1000;
+    }
+    SendBackpackLights(animation);
+    _speechColors = colors;
+  }
+  _speechLightsShowing = true;
+  return true;
 }
 
 // behavior lights are triggered from the engine and show the state for an active behavior.
